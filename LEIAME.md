@@ -176,7 +176,7 @@ Se, no primeiro acesso do gerente, aparecer um erro pedindo índice, abra o cons
 ## 9. Publicar no GitHub Pages
 
 1. No GitHub (conta `viniciussuperville-web`): **New repository** → `superville-chamados` → **Public** → **Create repository**.
-2. **Add file → Upload files** → envie os 7 arquivos: `index.html`, `manifest.webmanifest`, `produtos.csv`, `favicon.png`, `apple-touch-icon.png`, `icone-192.png` e `icone-512.png` → **Commit changes**. (Os logos já estão dentro do `index.html`.)
+2. **Add file → Upload files** → envie `index.html`, `manifest.webmanifest`, `produtos.csv`, `favicon.png`, `apple-touch-icon.png`, `icone-192.png`, `icone-512.png` e a pasta `fontes/` (Montserrat) → **Commit changes**. (Os logos já estão dentro do `index.html`.)
 3. **Settings → Pages** → Source: **Deploy from a branch** → Branch: `main` / `(root)` → **Save**.
 4. Endereço: `https://viniciussuperville-web.github.io/superville-chamados/`
 5. No Firebase: **Authentication → Configurações → Domínios autorizados → Adicionar domínio** → `viniciussuperville-web.github.io`.
