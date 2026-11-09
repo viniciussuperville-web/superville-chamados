@@ -7,7 +7,7 @@ Piloto: **Vila Romana (Coriolano)**. Funciona em **Android, iPhone (iOS) e compu
 - ✅ Repositório `superville-chamados` criado e publicado no GitHub Pages: https://viniciussuperville-web.github.io/superville-chamados/
 - ✅ Firebase `superville-chamados` criado: login por e-mail/senha ativo, domínio do GitHub autorizado, Firestore em São Paulo e regras de segurança publicadas (passo 8)
 - ✅ `FIREBASE_CONFIG` já preenchido no `index.html`
-- ⏳ Falta: cadastrar os usuários (passo 7), começando pelo seu (perfil `gestor`)
+- ⏳ Falta: cadastrar os usuários (passo 7): você (gestor), cada pessoa do escritório e **uma conta por loja**
 - Modo demonstração para treino: https://viniciussuperville-web.github.io/superville-chamados/?demo
 
 ## Sumário
@@ -30,7 +30,7 @@ Piloto: **Vila Romana (Coriolano)**. Funciona em **Android, iPhone (iOS) e compu
 
 Status: **Aberto → Em andamento → Resolvido e entregue** (ou Cancelado).
 
-1. A loja abre o chamado pelo celular.
+1. A loja abre o chamado pelo celular, informando no bloco **Solicitante** o nome e o cargo de quem está pedindo (já vem preenchido no celular de cada pessoa).
 2. Uma pessoa do escritório toca em **Assumir**. A partir daí, **só ela resolve** aquele chamado.
 3. Ela resolve, entrega na loja e marca **Resolvido e entregue**, informando para quem entregou. **Resolvido = já entregue.**
 4. Se não chegou, quem abriu toca em **Não recebi**. O chamado volta para a **mesma pessoa** do escritório e conta no painel como "Reaberto pela loja".
@@ -42,14 +42,20 @@ A lista de balanças de cada loja fica em `BALANCAS`, com a mesma numeração do
 
 ## 2. Quem vê o quê (perfis)
 
-| Perfil | Vê | Pode |
+**Contas:** cada loja tem **uma conta só** (ex.: Loja Vila Romana). O escritório tem **uma conta por pessoa**, e o gestor (Vinicius) tem a dele.
+
+**Primeiro acesso na loja:** no celular de cada pessoa, alguém entra uma vez com o e-mail e a senha da loja. O portal fica logado nesse celular e pergunta **"Quem está usando este celular?"** (nome e cargo). Esses dados ficam guardados no aparelho e já vêm preenchidos no bloco Solicitante de cada chamado. Se outra pessoa usar o mesmo celular, ela toca em **"Não é você? Trocar"**.
+
+| Quem | Vê | Pode |
 |---|---|---|
-| **Encarregado / Apoio** | Só os chamados que **ele mesmo** abriu | Abrir, cancelar enquanto ninguém assumiu, "Não recebi" |
-| **Gerente** | Os chamados que ele abriu **+ todos os resolvidos da loja** | O mesmo do encarregado nos chamados dele; nos dos outros, só consulta |
-| **Escritório** (um usuário por pessoa) | **Todos** os chamados | Assumir; resolver, cancelar, reabrir e conversar com a loja **só nos chamados que assumiu** |
+| **Encarregado / Apoio** (conta da loja) | Só os chamados que **ele mesmo** abriu (pelo celular e pelo nome) | Abrir, cancelar enquanto ninguém assumiu, "Não recebi" |
+| **Gerente** (conta da loja) | Os chamados que ele abriu **+ todos os resolvidos da loja** | O mesmo nos chamados dele; nos dos outros, só consulta |
+| **Escritório** (um usuário por pessoa) | **Todos** os chamados, com nome e cargo de quem pediu | Assumir; resolver, cancelar, reabrir e conversar com a loja **só nos chamados que assumiu** |
 | **Gestor** (Vinicius) | **Todos** os chamados + **Painel** | Tudo: agir em qualquer chamado e **transferir** o responsável |
 
-O Painel (só gestor) mostra, além do volume e dos prazos, o ranking **Quem resolve**: chamados, tempo médio e % no prazo de cada pessoa do escritório.
+> Como a conta é da loja, a separação entre as pessoas da mesma loja é feita **pelo celular e pelo nome**, não por senha. Quem tem a senha da loja consegue ver os chamados daquela loja. Por isso a senha da loja fica só com você e com o gerente, e o primeiro acesso é feito por um de vocês. Outras lojas e o escritório continuam protegidos pelas regras do banco.
+
+O Painel (só gestor) mostra, além do volume e dos prazos, os rankings **Quem mais solicita** (nome e cargo) e **Quem resolve** (escritório).
 
 ## 3. Tipos de chamado
 
@@ -63,19 +69,19 @@ O Painel (só gestor) mostra, além do volume e dos prazos, o ranking **Quem res
 | Emissão de nota fiscal | Setor, destinatário e, por item: código e quantidade | Sempre imediata (30 min) |
 | NF de devolução | Setor, prioridade, tipo de devolução, fornecedor, NF de origem e, por produto: código e quantidade | 2 dias (urgente 30 min) |
 
+Todo chamado começa pelo bloco **Solicitante** (nome e cargo: Encarregado, Apoio ou Gerente), seguido de setor e prioridade.
 Foto e observação são opcionais, menos a foto do rótulo (Produto sem cadastro) e a observação em chamado urgente, que vira o motivo.
 Ao lado de cada código há um botão de **câmera** para ler o código de barras (Android e iPhone).
 
 ## 4. Testar em modo demonstração
 
-1. Abra o `index.html` no navegador.
-2. Aba 1: entre como **Encarregado (demo)** e abra chamados (teste um urgente).
-3. Aba 2: entre como **Escritório 1 (demo)** → assuma e resolva.
-4. Aba 3: entre como **Escritório 2 (demo)** → confira que ele **não** consegue resolver o chamado do Escritório 1.
-5. Entre como **Gerente (demo)** → ele vê os resolvidos da loja.
-6. Entre como **Gestor (demo)** → teste **Transferir responsável** e a aba **Painel**.
+Endereço: https://viniciussuperville-web.github.io/superville-chamados/?demo (os dados ficam só no navegador).
 
-Os dados da demonstração ficam só no navegador.
+1. Entre como **Loja Vila Romana (demo)** → informe um nome e cargo → abra chamados (teste um urgente).
+2. Em outra aba, entre como **Escritório 1 (demo)** → assuma e resolva.
+3. Entre como **Escritório 2 (demo)** → confira que ele **não** consegue resolver o chamado do Escritório 1.
+4. Na conta da loja, toque em **"Não é você? Trocar"** → entre como `Marcos (demo)`, cargo **Gerente** → ele vê os resolvidos da loja.
+5. Entre como **Gestor (demo)** → teste **Transferir responsável** e a aba **Painel**.
 
 ## 5. Base de produtos (produtos.csv)
 
@@ -100,21 +106,21 @@ Em 1.776 casos o mesmo número serve para dois produtos. Exemplo: `29254` é o P
 
 ## 7. Cadastrar os usuários
 
-Cada pessoa tem o seu usuário, inclusive **cada pessoa do escritório**. Para cada uma:
+São três tipos de conta: **você (gestor)**, **cada pessoa do escritório** e **uma conta por loja**. Para cada conta:
 
-1. **Authentication → Users → Adicionar usuário** → e-mail e senha → **Adicionar usuário**. Copie o **UID** da linha criada.
-2. **Firestore Database → Dados → Iniciar coleção** (na primeira vez) → ID da coleção: `usuarios`.
+1. **Authentication → Usuários → Adicionar usuário** → e-mail e senha → **Adicionar usuário**. Copie o **UID** da linha criada.
+2. **Firestore Database → Dados → + Iniciar coleção** (na primeira vez) → ID da coleção: `usuarios`.
 3. **ID do documento** = o UID copiado. Campos (todos do tipo *string*):
 
-| Campo | Encarregado / Apoio / Gerente | Escritório | Gestor (você) |
+| Campo | Conta da loja | Escritório | Gestor (você) |
 |---|---|---|---|
-| `nome` | Nome da pessoa | Nome da pessoa | Seu nome |
+| `nome` | `Loja Vila Romana` | Nome da pessoa | Seu nome |
 | `perfil` | `solicitante` | `escritorio` | `gestor` |
-| `cargo` | `Encarregado`, `Apoio` ou `Gerente` | `Escritório` | `Gestor` |
+| `cargo` | `Loja` | `Escritório` | `Gestor` |
 | `loja` | `Vila Romana` | deixe vazio | deixe vazio |
 
-> `cargo` = `Gerente` (com G maiúsculo) é o que libera a visão dos resolvidos da loja.
 > `loja` precisa ser escrito exatamente igual ao que está em `LOJAS` no arquivo.
+> Sugestão de e-mail da conta da loja: `loja.vilaromana@gruposuperville.com.br` (ou outro e-mail que só você e o gerente acessem).
 
 ## 8. Regras de segurança do Firestore
 
@@ -138,11 +144,10 @@ service cloud.firestore {
     }
 
     match /chamados/{id} {
-      // Quem abriu vê o seu; gerente vê os resolvidos da loja; escritório e gestor veem tudo
+      // Escritório e gestor veem tudo; a conta da loja vê os chamados da própria loja
+      // (a separação entre pessoas da mesma loja é feita na tela, pelo celular e pelo nome)
       allow read: if acessoTotal()
-        || (logado() && resource.data.solicitanteUid == request.auth.uid)
-        || (logado() && perfil().cargo == 'Gerente'
-            && perfil().loja == resource.data.loja && resource.data.status == 'concluido');
+        || (logado() && perfil().perfil == 'solicitante' && perfil().loja == resource.data.loja);
 
       allow create: if logado() && perfil().perfil == 'solicitante'
         && request.resource.data.loja == perfil().loja
@@ -150,16 +155,16 @@ service cloud.firestore {
         && request.resource.data.status == 'aberto';
 
       // Gestor: tudo. Escritório: só chamado livre (para assumir) ou já assumido por ele.
-      // Loja: só o próprio chamado, sem mexer em responsável nem loja.
+      // Loja: só chamados da própria loja, sem mexer em responsável, loja ou conta que abriu.
       allow update: if gestor()
         || (escritorio()
             && (resource.data.responsavelUid == null || resource.data.responsavelUid == request.auth.uid)
             && (request.resource.data.responsavelUid == request.auth.uid
                 || request.resource.data.responsavelUid == resource.data.responsavelUid))
-        || (logado() && resource.data.solicitanteUid == request.auth.uid
+        || (logado() && perfil().perfil == 'solicitante' && perfil().loja == resource.data.loja
+            && request.resource.data.loja == resource.data.loja
             && request.resource.data.solicitanteUid == resource.data.solicitanteUid
-            && request.resource.data.responsavelUid == resource.data.responsavelUid
-            && request.resource.data.loja == resource.data.loja);
+            && request.resource.data.responsavelUid == resource.data.responsavelUid);
 
       allow delete: if false;
     }
@@ -171,7 +176,7 @@ service cloud.firestore {
 }
 ```
 
-Se, no primeiro acesso do gerente, aparecer um erro pedindo índice, abra o console do navegador e clique no link que o Firebase mostra. Ele cria o índice sozinho em 1–2 minutos.
+As regras acima já estão publicadas no projeto `superville-chamados`.
 
 ## 9. Publicar no GitHub Pages
 
@@ -189,7 +194,8 @@ O endereço precisa ser **https** (o GitHub Pages já é). Sem https, a câmera 
 1. Abra o link no **Safari** (precisa ser o Safari).
 2. Toque em **Compartilhar** (quadrado com seta para cima) → **Adicionar à Tela de Início** → **Adicionar**.
 3. Abra pelo ícone **Chamados**. Ele abre em tela cheia, como um aplicativo.
-4. Na primeira leitura de código, permita a câmera. Se negou sem querer: **Ajustes → Safari → Câmera → Permitir**.
+4. **Faça o primeiro acesso (e-mail e senha da loja) já pelo ícone**, não pelo Safari: no iPhone o ícone guarda o login separado do Safari. Feito isso, ele fica logado.
+5. Na primeira leitura de código, permita a câmera. Se negou sem querer: **Ajustes → Safari → Câmera → Permitir**.
 
 **Android:**
 1. Abra o link no **Chrome** → menu **⋮** → **Adicionar à tela inicial** (ou **Instalar app**).
@@ -200,7 +206,7 @@ O endereço precisa ser **https** (o GitHub Pages já é). Sem https, a câmera 
 
 ## 11. Roteiro do piloto (Vila Romana)
 
-1. **Dia 0:** cadastrar Encarregados, Apoios, Gerente, cada pessoa do escritório e você como gestor. Instalar no celular de cada um e fazer um chamado teste de cada tipo junto com eles.
+1. **Dia 0:** criar a conta da Loja Vila Romana, a de cada pessoa do escritório e a sua (gestor). Instalar o portal no celular de cada encarregado, apoio e gerente, fazer o primeiro acesso com a conta da loja, cada um informa nome e cargo, e abrir um chamado teste de cada tipo junto com eles.
 2. **Comunicado:** a partir de [data], placas, produto sem cadastro e notas fiscais só pelo portal. Urgente só com motivo real. Ninguém sobe no escritório para essas demandas.
 3. **Semana 1:** o gestor acompanha o **Painel** todo dia: atrasados, tempo até assumir e quem resolve.
 4. **Fim da semana 2:** revisar com a loja e o escritório. Os prazos são realistas? Quantos urgentes eram urgentes de verdade? Houve chamados reabertos? Faltou algum tipo de chamado?
@@ -209,5 +215,5 @@ O endereço precisa ser **https** (o GitHub Pages já é). Sem https, a câmera 
 ## 12. Expandir para outras lojas
 
 1. No `index.html`, edite `LOJAS = ["Vila Romana", "Vila Leopoldina", "Santo Amaro", "Pio XI"]` e suba o arquivo de novo no GitHub.
-2. Cadastre os usuários da nova loja (passo 7) com o campo `loja` correspondente.
+2. Crie a conta da nova loja (passo 7) com o campo `loja` correspondente e inclua as balanças dela em `BALANCAS`.
 3. O escritório e o gestor passam a ver um filtro de loja na Fila automaticamente.

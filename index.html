@@ -206,6 +206,8 @@ tbody tr:nth-child(even) td{background:#F4FAF6}
 .bal input{width:18px;height:18px;accent-color:var(--verde);flex:none;-webkit-appearance:auto;appearance:auto}
 .bal:has(input:checked){border-color:var(--verde);background:var(--verde-claro)}
 .bal.todas{border-style:dashed}
+.banner.quem{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.banner.quem .btn-link{margin:0}
 .escolhas{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .escolha{text-align:left;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:13px}
 .escolha b{margin-right:6px}
@@ -274,6 +276,7 @@ const TIPOS = {
   devolucao: { nome: "NF de devolução",        curto: "Devolução", sla: 48, cor: "#8B5CF6", desc: "Devolução ao fornecedor: avaria, vencido, divergência" }
 };
 
+const CARGOS_LOJA = ["Encarregado", "Apoio", "Gerente"];   // quem pode abrir chamado pela conta da loja
 const SETORES = ["Mercearia", "Açougue", "Hortifruti", "Padaria", "Frios e Laticínios", "Bebidas", "Limpeza e Higiene", "Frente de caixa", "Depósito", "Outro"];
 const MODELOS = ["Oferta", "Clube Fidelidade", "Cashback"];
 const TAMANHOS = [["A4", "A4 (1 por folha)"], ["A5", "A5 (2 por folha)"], ["A6", "A6 (4 por folha)"]];
@@ -300,12 +303,10 @@ const STATUS = {
 const ATIVOS = ["aberto", "andamento"];
 
 const DEMO_USERS = [
-  { uid: "d1", nome: "Encarregado (demo)",   perfil: "solicitante", cargo: "Encarregado", loja: "Vila Romana" },
-  { uid: "d2", nome: "Apoio (demo)",         perfil: "solicitante", cargo: "Apoio",       loja: "Vila Romana" },
-  { uid: "d3", nome: "Gerente (demo)",       perfil: "solicitante", cargo: "Gerente",     loja: "Vila Romana" },
-  { uid: "d4", nome: "Escritório 1 (demo)",  perfil: "escritorio",  cargo: "Escritório",  loja: "" },
-  { uid: "d5", nome: "Escritório 2 (demo)",  perfil: "escritorio",  cargo: "Escritório",  loja: "" },
-  { uid: "d6", nome: "Gestor (demo)",        perfil: "gestor",      cargo: "Gestor",      loja: "" }
+  { uid: "d1", nome: "Loja Vila Romana (demo)", perfil: "solicitante", cargo: "Loja",       loja: "Vila Romana" },
+  { uid: "d4", nome: "Escritório 1 (demo)",     perfil: "escritorio",  cargo: "Escritório", loja: "" },
+  { uid: "d5", nome: "Escritório 2 (demo)",     perfil: "escritorio",  cargo: "Escritório", loja: "" },
+  { uid: "d6", nome: "Gestor (demo)",           perfil: "gestor",      cargo: "Gestor",     loja: "" }
 ];
 
 const svgI = d => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -358,9 +359,33 @@ const nomeItem = i => i.descricao || "Cód. " + (i.codigo || "?");
 // Acesso total: escritório e gestor. Gestor também vê o painel e transfere chamados.
 const isEsc = () => ["escritorio", "gestor"].includes(Store.perfil?.perfil);
 const isGestor = () => Store.perfil?.perfil === "gestor";
+const ehLoja = () => Store.perfil?.perfil === "solicitante";
+
+// Pessoa que usa este celular (a conta é da loja; nome e cargo ficam guardados no aparelho)
+const Pessoa = {
+  _mem: null,
+  ler() {
+    if (this._mem) return this._mem;
+    try { const s = localStorage.getItem("cs_pessoa"); if (s) this._mem = JSON.parse(s); } catch (e) {}
+    return this._mem;
+  },
+  salvar(nome, cargo, novoAparelho = false) {
+    const atual = novoAparelho ? null : this.ler();
+    const p = { id: atual?.id || "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), nome: nome.trim().replace(/\s+/g, " "), cargo };
+    this._mem = p; try { localStorage.setItem("cs_pessoa", JSON.stringify(p)); } catch (e) {}
+    return p;
+  },
+  limpar() { this._mem = null; try { localStorage.removeItem("cs_pessoa"); } catch (e) {} }
+};
+const normNome = s => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+const ehMeu = p => { const eu = Pessoa.ler(); return !!eu && p.loja === Store.perfil?.loja && (p.dispositivoId === eu.id || normNome(p.solicitanteNome) === normNome(eu.nome)); };
+const ehGerenteAqui = () => ehLoja() && Pessoa.ler()?.cargo === "Gerente";
+// Na conta da loja: cada pessoa vê o que abriu; o gerente também vê os resolvidos da loja
+const visivelLoja = p => ehMeu(p) || (ehGerenteAqui() && p.status === "concluido");
+const quemSou = () => ehLoja() ? (Pessoa.ler()?.nome || Store.perfil?.nome) : Store.perfil?.nome;
 const ehResponsavel = p => !!p.responsavelUid && p.responsavelUid === Store.perfil?.uid;
 // Quem pode mexer no chamado (mensagens e ações)
-const podeMexer = p => isGestor() || (isEsc() ? (!p.responsavelUid || ehResponsavel(p)) : p.solicitanteUid === Store.perfil?.uid);
+const podeMexer = p => isGestor() || (isEsc() ? (!p.responsavelUid || ehResponsavel(p)) : ehMeu(p));
 
 function toast(msg, tipo = "") {
   const t = $("#toast"); t.textContent = msg; t.className = "show " + tipo;
@@ -518,11 +543,11 @@ async function escanear(input) {
 let demoMem = null;
 function demoLer() {
   if (demoMem) return demoMem;
-  try { const s = localStorage.getItem("cs_demo_chamados_v3"); return s ? JSON.parse(s) : []; }
+  try { const s = localStorage.getItem("cs_demo_chamados_v4"); return s ? JSON.parse(s) : []; }
   catch (e) { demoMem = []; return demoMem; }
 }
 function demoSalvar(l) {
-  try { localStorage.setItem("cs_demo_chamados_v3", JSON.stringify(l)); demoMem = null; }
+  try { localStorage.setItem("cs_demo_chamados_v4", JSON.stringify(l)); demoMem = null; }
   catch (e) { demoMem = l; toast("Armazenamento do navegador cheio — os dados da demonstração ficarão só nesta aba.", "erro"); }
 }
 function demoSemear() {
@@ -530,19 +555,19 @@ function demoSemear() {
   const h = 3600000, now = Date.now(), base = { loja: "Vila Romana", fotos: [], responsavelUid: null, responsavelNome: null };
   const l = [
     { ...base, id: "s1", numero: 1, tipo: "placa", setor: "Mercearia", prioridade: "normal", status: "aberto",
-      solicitanteUid: "d1", solicitanteNome: "Encarregado (demo)", cargo: "Encarregado", criadoEm: now - 1.5 * h, atualizadoEm: now - 1.5 * h,
+      solicitanteUid: "d1", solicitanteNome: "Carlos (demo)", cargo: "Encarregado", dispositivoId: "demo-carlos", criadoEm: now - 1.5 * h, atualizadoEm: now - 1.5 * h,
       dados: { itens: [
         { codigo: "10234", descricao: "ARROZ TIPO 1 5KG", modelo: "Oferta", tamanho: "A4", qtd: "2" },
         { codigo: "20511", descricao: "FEIJAO CARIOCA 1KG", modelo: "Clube Fidelidade", tamanho: "A5", qtd: "2" } ] },
       obs: "Para a ilha da entrada" },
     { ...base, id: "s2", numero: 2, tipo: "cadastro", setor: "Mercearia", prioridade: "urgente", status: "andamento",
       responsavelUid: "d4", responsavelNome: "Escritório 1 (demo)", assumidoEm: now - 2 * h,
-      solicitanteUid: "d2", solicitanteNome: "Apoio (demo)", cargo: "Apoio", criadoEm: now - 3 * h, atualizadoEm: now - 2 * h,
+      solicitanteUid: "d1", solicitanteNome: "Ana (demo)", cargo: "Apoio", dispositivoId: "demo-ana", criadoEm: now - 3 * h, atualizadoEm: now - 2 * h,
       dados: { ean: "7891234567895", descricao: "Biscoito Recheado Chocolate 130g", fornecedor: "Exemplo Alimentos" },
       obs: "Cliente no caixa e o produto não passa" },
     { ...base, id: "s3", numero: 3, tipo: "devolucao", setor: "Açougue", prioridade: "normal", status: "concluido",
-      responsavelUid: "d4", responsavelNome: "Escritório 1 (demo)", entreguePara: "Gerente (demo)", assumidoEm: now - 18 * h,
-      solicitanteUid: "d3", solicitanteNome: "Gerente (demo)", cargo: "Gerente", criadoEm: now - 20 * h, atualizadoEm: now - h, concluidoEm: now - h,
+      responsavelUid: "d4", responsavelNome: "Escritório 1 (demo)", entreguePara: "Marcos (demo)", assumidoEm: now - 18 * h,
+      solicitanteUid: "d1", solicitanteNome: "Marcos (demo)", cargo: "Gerente", dispositivoId: "demo-marcos", criadoEm: now - 20 * h, atualizadoEm: now - h, concluidoEm: now - h,
       dados: { tipoDevolucao: "Divergência de quantidade", fornecedor: "Frigorífico Exemplo", nfOrigem: "458921",
         itens: [{ codigo: "80450", descricao: "ACEM BOVINO KG", qtd: "24,5" }] },
       obs: "Vieram 2 caixas a menos de acém" }
@@ -585,22 +610,17 @@ const Store = {
   },
 
   observarPedidos(cb) {
-    // Loja: cada um vê só o que abriu. Gerente também vê os resolvidos da loja. Escritório e gestor veem tudo.
-    const P = this.perfil, ehGer = P.cargo === "Gerente";
-    const visivel = p => isEsc() || p.solicitanteUid === P.uid || (ehGer && p.loja === P.loja && p.status === "concluido");
+    // Escritório e gestor: todos os chamados. Conta da loja: os chamados da loja (o filtro por pessoa é feito na tela).
+    const P = this.perfil;
     if (this.modo === "demo") {
-      const f = () => cb(demoLer().filter(visivel));
+      const f = () => cb(isEsc() ? demoLer() : demoLer().filter(p => p.loja === P.loja));
       this._listeners.add(f); f();
       return () => this._listeners.delete(f);
     }
-    const { db, F } = this._fb, col = F.collection(db, "chamados"), docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
-    const erro = err => { console.error(err); toast("Erro ao sincronizar: " + err.code, "erro"); };
-    if (isEsc()) return F.onSnapshot(F.query(col, F.orderBy("criadoEm", "desc"), F.limit(500)), s => cb(docs(s)), erro);
-    const partes = { meus: [], loja: [] };
-    const juntar = () => { const m = new Map(); [...partes.meus, ...partes.loja].forEach(p => m.set(p.id, p)); cb([...m.values()]); };
-    const u1 = F.onSnapshot(F.query(col, F.where("solicitanteUid", "==", P.uid)), s => { partes.meus = docs(s); juntar(); }, erro);
-    const u2 = ehGer ? F.onSnapshot(F.query(col, F.where("loja", "==", P.loja), F.where("status", "==", "concluido")), s => { partes.loja = docs(s); juntar(); }, erro) : () => {};
-    return () => { u1(); u2(); };
+    const { db, F } = this._fb, col = F.collection(db, "chamados");
+    const q = isEsc() ? F.query(col, F.orderBy("criadoEm", "desc"), F.limit(500)) : F.query(col, F.where("loja", "==", P.loja));
+    return F.onSnapshot(q, s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => { console.error(err); toast("Erro ao sincronizar: " + err.code, "erro"); });
   },
 
   async listarEquipe() {
@@ -612,7 +632,7 @@ const Store = {
   _avisar() { this._listeners.forEach(f => f()); },
 
   async criarPedido(p) {
-    const hist = { em: Date.now(), por: this.perfil.nome, acao: "Chamado aberto" };
+    const hist = { em: Date.now(), por: quemSou(), acao: "Chamado aberto" };
     if (this.modo === "demo") {
       const l = demoLer();
       const n = l.reduce((m, x) => Math.max(m, x.numero || 0), 0) + 1;
@@ -632,7 +652,7 @@ const Store = {
   },
 
   async atualizar(id, patch, acao, obs) {
-    const h = { em: Date.now(), por: this.perfil.nome, acao }; if (obs) h.obs = obs;
+    const h = { em: Date.now(), por: quemSou(), acao }; if (obs) h.obs = obs;
     patch = { ...patch, atualizadoEm: Date.now() };
     if (this.modo === "demo") {
       const l = demoLer(), p = l.find(x => x.id === id); if (!p) return;
@@ -645,7 +665,7 @@ const Store = {
 };
 
 /* ---------- estado da tela ---------- */
-let PEDIDOS = [], aba = "novo", filtros, novoTipo = null, novoFotos = [], aberto = null, periodo = "7";
+let TODOS = [], PEDIDOS = [], aba = "novo", filtros, novoTipo = null, novoFotos = [], aberto = null, periodo = "7";
 let unsub = null, conhecidos = new Set(), primeiraCarga = true;
 const resetFiltros = () => filtros = { status: "ativos", tipo: "todos", loja: "todas", busca: "", meus: false, atrasados: false };
 resetFiltros();
@@ -678,10 +698,10 @@ function montarTopo() {
   const E = isEsc();
   const abas = E
     ? [["fila", "Fila", cnt("aberto")], ...(isGestor() ? [["painel", "Painel", 0]] : [])]
-    : [["novo", "Novo chamado", 0], ["meus", "Meus chamados", PEDIDOS.filter(p => ATIVOS.includes(p.status) && p.solicitanteUid === P.uid).length]];
+    : [["novo", "Novo chamado", 0], ["meus", "Meus chamados", PEDIDOS.filter(p => ATIVOS.includes(p.status) && ehMeu(p)).length]];
   t.innerHTML = `<header>${logoHTML()}
     <div class="h-tit"><b>Portal de Chamados</b><small>${isGestor() ? "Gestor · acesso total" : E ? "Escritório" : "Loja " + esc(P.loja)}${Store.modo === "demo" ? " · modo demonstração" : ""}</small></div>
-    <div class="h-user"><b>${esc(P.nome)}</b>${esc(P.cargo || "")}</div>
+    <div class="h-user">${ehLoja() && Pessoa.ler() ? `<b>${esc(Pessoa.ler().nome)}</b>${esc(Pessoa.ler().cargo)}` : `<b>${esc(P.nome)}</b>${esc(P.cargo || "")}`}</div>
     <button class="btn-sair" data-act="sair">Sair</button></header>
     <nav class="abas">${abas.map(([k, n, c]) => `<button class="aba ${aba === k ? "on" : ""}" data-act="aba" data-aba="${k}">${n}${c ? `<span class="badge">${c}</span>` : ""}</button>`).join("")}</nav>`;
   const ab = cnt("aberto");
@@ -738,7 +758,27 @@ async function login(form) {
   }
 }
 
-/* ---------- NOVO PEDIDO (loja) ---------- */
+/* ---------- quem está usando este celular (conta da loja) ---------- */
+function renderIdentificacao() {
+  montarTopo();
+  const eu = Pessoa.ler();
+  $("#app").innerHTML = `<form id="fPessoa" class="card" style="max-width:460px;margin:12px auto">
+      <h2>Quem está usando este celular?</h2>
+      <p class="muted">Este celular está conectado à conta da <b>Loja ${esc(Store.perfil.loja)}</b>. Informe seus dados uma vez: eles ficam guardados aqui e já vêm preenchidos em cada chamado.</p>
+      <label>Seu nome<input name="nome" required autocomplete="name" value="${esc(eu?.nome || "")}" placeholder="Nome e sobrenome"></label>
+      <label>Cargo<select name="cargo" required><option value="">Selecione</option>${opts(CARGOS_LOJA, eu?.cargo)}</select></label>
+      <button class="btn btn-full" type="submit">Continuar</button>
+    </form>`;
+}
+function salvarIdentificacao(form) {
+  const nome = form.nome.value.trim(), cargo = form.cargo.value;
+  if (nome.length < 3) { toast("Informe nome e sobrenome.", "erro"); form.nome.focus(); return; }
+  Pessoa.salvar(nome, cargo, true);
+  toast(`Olá, ${nome.split(" ")[0]}!`, "ok");
+  aba = "novo"; resetFiltros(); PEDIDOS = TODOS.filter(visivelLoja); render();
+}
+
+/* ---------- NOVO CHAMADO (loja) ---------- */
 const opts = (lista, sel) => lista.map(o => { const [v, n] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(n)}</option>`; }).join("");
 
 function campoCodigo(nome = "codigo", rotulo = "Código interno ou de barras") {
@@ -774,7 +814,9 @@ function itemHTML(tipo) {
 }
 
 function vNovo() {
-  if (!novoTipo) return `<section class="card">
+  const eu = Pessoa.ler();
+  const quem = ehLoja() && eu ? `<div class="banner neutro quem"><span>Você está como <b>${esc(eu.nome)}</b> · ${esc(eu.cargo)}</span><button type="button" class="btn-link" data-act="trocarPessoa">Não é você? Trocar</button></div>` : "";
+  if (!novoTipo) return `${quem}<section class="card">
       <h2>Que tipo de chamado?</h2>
       <p class="muted">Escolha o tipo. O escritório recebe na hora e você acompanha tudo por aqui, sem precisar subir.</p>
       <div class="tipos">${Object.entries(TIPOS).map(([k, t]) => `
@@ -820,6 +862,11 @@ function vNovo() {
       <button type="button" class="btn-link" data-act="voltarTipo">← Trocar tipo</button>
       <h2 style="color:${t.cor}">${t.nome}</h2>
       <p class="muted">Prazo do escritório: ${slaTxt(t)}. Todos os campos são obrigatórios, menos ${novoTipo === "cadastro" ? "marca e observação" : "fotos e observação"}.</p>
+      <div class="sec-tit" style="margin-top:4px">Solicitante</div>
+      <div class="grid2">
+        <label>Seu nome<input name="solNome" required autocomplete="name" value="${esc(Pessoa.ler()?.nome || "")}" placeholder="Nome e sobrenome"></label>
+        <label>Cargo<select name="solCargo" required><option value="">Selecione</option>${opts(CARGOS_LOJA, Pessoa.ler()?.cargo)}</select></label>
+      </div>
       <div class="grid2">
         <label>Setor<select name="setor" required><option value="">Selecione</option>${opts(SETORES)}</select></label>
         ${prioridade}
@@ -878,10 +925,15 @@ async function enviarNovo(form) {
   if (novoTipo === "cadastro") dados = { ean: g("ean"), descricao: g("descricao"), fornecedor: g("fornecedor") };
   if (novoTipo === "nfe") dados = { destinatario: g("destinatario"), itens: lerItens() };
   if (novoTipo === "devolucao") dados = { tipoDevolucao: g("tipoDevolucao"), fornecedor: g("fornecedor"), nfOrigem: g("nfOrigem"), itens: lerItens() };
+  const solNome = g("solNome").replace(/\s+/g, " "), solCargo = g("solCargo");
+  if (solNome.length < 3) return falha("Informe seu nome no bloco Solicitante.", form.solNome);
+  const eu = Pessoa.ler();
+  if (!eu || eu.nome !== solNome || eu.cargo !== solCargo) Pessoa.salvar(solNome, solCargo);
   btn.disabled = true; btn.textContent = "Enviando…";
   const agora = Date.now();
   const p = { tipo: novoTipo, loja: P.loja, setor: g("setor"), prioridade, dados, obs: g("obs"), fotos: novoFotos.slice(),
-    status: "aberto", solicitanteUid: P.uid, solicitanteNome: P.nome, cargo: P.cargo || "", responsavelUid: null, responsavelNome: null,
+    status: "aberto", solicitanteUid: P.uid, solicitanteNome: solNome, cargo: solCargo, dispositivoId: Pessoa.ler()?.id || "", contaLoja: P.nome,
+    responsavelUid: null, responsavelNome: null,
     criadoEm: agora, atualizadoEm: agora };
   try {
     const r = await Store.criarPedido(p);
@@ -900,7 +952,7 @@ function filtrar() {
   else if (f.status !== "todos") l = l.filter(p => p.status === f.status);
   if (f.tipo !== "todos") l = l.filter(p => p.tipo === f.tipo);
   if (f.loja !== "todas") l = l.filter(p => p.loja === f.loja);
-  if (f.meus) l = l.filter(p => isEsc() ? p.responsavelUid === Store.perfil.uid : p.solicitanteUid === Store.perfil.uid);
+  if (f.meus) l = l.filter(p => isEsc() ? p.responsavelUid === Store.perfil.uid : ehMeu(p));
   if (f.atrasados) l = l.filter(atrasado);
   const q = f.busca.toLowerCase().trim(); if (q) l = l.filter(p => textoBusca(p).includes(q));
   const ativo = p => ATIVOS.includes(p.status);
@@ -920,7 +972,7 @@ function cardPedido(p) {
       ${tagPrio(p)}${atrasado(p) ? '<span class="tag atr">Atrasado</span>' : ""}
       <span class="status" style="--c:${s.cor}">${s.nome}</span></div>
     <div class="chamado-res">${esc(resumo(p))}</div>
-    <div class="chamado-meta">${isEsc() ? esc(p.loja) + " · " : ""}${p.solicitanteUid === Store.perfil.uid ? "Você" : esc(p.solicitanteNome)} · ${esc(p.setor)} · ${desde(p.criadoEm)}${p.responsavelNome ? " · Resp.: " + esc(p.responsavelNome) : ""}</div>
+    <div class="chamado-meta">${isEsc() ? esc(p.loja) + " · " : ""}${ehLoja() && ehMeu(p) ? "Você" : esc(p.solicitanteNome) + (isEsc() && p.cargo ? " (" + esc(p.cargo) + ")" : "")} · ${esc(p.setor)} · ${desde(p.criadoEm)}${p.responsavelNome ? " · Resp.: " + esc(p.responsavelNome) : ""}</div>
   </button>`;
 }
 
@@ -937,7 +989,7 @@ function chipsStatus() {
 }
 
 function vMeus() {
-  const ger = Store.perfil.cargo === "Gerente";
+  const ger = ehGerenteAqui();
   return `<div class="banner neutro">${ger ? "Aqui aparecem os chamados que <b>você</b> abriu e os <b>resolvidos da loja</b>. " : "Aqui aparecem os chamados que <b>você</b> abriu. "}<b>Resolvido</b> = o escritório já entregou na loja. Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</div>
     <div class="filtros">${chipsStatus()}</div>
     <div class="filtros">
@@ -1011,7 +1063,7 @@ function vPainel() {
     </div></div>
     <div class="card"><h3>2. Chamados por tipo</h3>${tabela(porTipo, "Tipo", r => TIPOS[r.k]?.cor || "#999")}</div>
     <div class="card"><h3>3. Chamados por setor</h3>${tabela(agrupar(p => p.setor), "Setor", () => "#3BB072")}</div>
-    <div class="card"><h3>4. Quem mais solicita</h3>${tabela(agrupar(p => p.solicitanteNome + (LOJAS.length > 1 ? " · " + p.loja : "")), "Solicitante", () => "#111111")}</div>
+    <div class="card"><h3>4. Quem mais solicita</h3>${tabela(agrupar(p => (p.solicitanteNome || "").trim().replace(/\s+/g, " ").replace(/(^|\s)\S/g, c => c.toUpperCase()) + (p.cargo ? " (" + p.cargo + ")" : "") + (LOJAS.length > 1 ? " · " + p.loja : "")), "Solicitante", () => "#111111")}</div>
     <div class="card"><h3>5. Quem resolve (escritório)</h3>${tabela(agrupar(p => p.responsavelNome || "Sem responsável"), "Responsável", () => "#2563EB")}</div>
     <div class="card"><h3>6. Como ler este painel</h3><div class="legenda">
       <p><b>Chamados no período:</b> chamados abertos pela loja dentro do período escolhido acima. Cancelados não entram na conta.</p>
@@ -1069,7 +1121,7 @@ function acoesHTML(p) {
     if (p.status === "andamento" && !dono && !G) dica = `Assumido por <b>${esc(p.responsavelNome)}</b>. Só quem assumiu resolve; para trocar o responsável, fale com o gestor.`;
     if ((p.status === "concluido" || p.status === "cancelado") && (dono || G)) L.push(b("reabrir", "Reabrir", "sec"));
     if (G && ativo) L.push(b("transferir", p.responsavelUid ? "Transferir responsável" : "Atribuir a alguém", "sec"));
-  } else if (p.solicitanteUid === Store.perfil.uid) {
+  } else if (ehMeu(p)) {
     if (p.status === "aberto") L.push(b("cancelar", "Cancelar chamado", "sec"));
     if (p.status === "concluido") { L.push(b("contestar", "Não recebi / não resolveu", "sec")); dica = "O escritório marcou como resolvido e entregue. Se não chegou ou ficou errado, use o botão acima."; }
     if (p.status === "andamento") dica = `${esc(p.responsavelNome || "O escritório")} já está cuidando deste chamado.`;
@@ -1204,7 +1256,9 @@ function onPedidos(lista) {
     }
   }
   conhecidos = new Set(lista.map(p => p.id)); primeiraCarga = false;
-  PEDIDOS = lista; refrescar();
+  TODOS = lista; PEDIDOS = isEsc() ? lista : lista.filter(visivelLoja);
+  if (ehLoja() && !Pessoa.ler()) { montarTopo(); return; }
+  refrescar();
   if (aberto) renderDetalhe();
 }
 
@@ -1214,12 +1268,13 @@ function iniciarSessao() {
   primeiraCarga = true; conhecidos = new Set();
   if (unsub) unsub();
   unsub = Store.observarPedidos(onPedidos);
+  if (ehLoja() && !Pessoa.ler()) { renderIdentificacao(); return; }
   render();
 }
 
 async function sair() {
   if (unsub) { unsub(); unsub = null; }
-  PEDIDOS = []; fecharDetalhe();
+  PEDIDOS = []; TODOS = []; fecharDetalhe();
   await Store.sair();
   if (Store.modo === "demo") renderLogin();
 }
@@ -1237,7 +1292,16 @@ document.addEventListener("click", e => {
   const a = el.dataset.act;
   switch (a) {
     case "demo": Store.entrarDemo(el.dataset.uid); iniciarSessao(); break;
-    case "sair": sair(); break;
+    case "sair":
+      if (ehLoja() && Store.modo !== "demo") {
+        dialogo({ titulo: "Sair da conta da loja?", texto: "Para entrar de novo neste celular vai ser preciso o e-mail e a senha da loja. Se só quer trocar a pessoa, use “Não é você? Trocar” na tela de novo chamado.", botao: "Sair mesmo assim", perigo: true })
+          .then(o => { if (o !== null) sair(); });
+      } else sair();
+      break;
+    case "trocarPessoa":
+      dialogo({ titulo: "Trocar pessoa", texto: "Os chamados de quem estava usando continuam salvos. A próxima pessoa informa o nome dela.", botao: "Trocar" })
+        .then(o => { if (o === null) return; Pessoa.limpar(); fecharDetalhe(); PEDIDOS = []; renderIdentificacao(); });
+      break;
     case "aba": aba = el.dataset.aba; resetFiltros(); render(); window.scrollTo(0, 0); break;
     case "escolherTipo": novoTipo = el.dataset.tipo; novoFotos = []; render(); break;
     case "voltarTipo": novoTipo = null; novoFotos = []; render(); break;
@@ -1297,9 +1361,10 @@ document.addEventListener("input", e => {
 document.addEventListener("submit", e => {
   if (e.target.id === "fNovo") { e.preventDefault(); enviarNovo(e.target); }
   if (e.target.id === "fLogin") { e.preventDefault(); login(e.target); }
+  if (e.target.id === "fPessoa") { e.preventDefault(); salvarIdentificacao(e.target); }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#dlg").hidden && aberto) fecharDetalhe(); });
-window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v3" && Store.modo === "demo") Store._avisar(); });
+window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v4" && Store.modo === "demo") Store._avisar(); });
 // Escritório: apita a cada 45s enquanto houver URGENTE sem responsável
 setInterval(() => { if (isEsc() && PEDIDOS.some(p => p.status === "aberto" && p.prioridade === "urgente")) { beep(); setTimeout(beep, 250); } }, 45000);
 // Atualiza "há X min" e atrasos a cada minuto
