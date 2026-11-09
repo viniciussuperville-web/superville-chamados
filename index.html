@@ -277,6 +277,8 @@ const TIPOS = {
 };
 
 const CARGOS_LOJA = ["Encarregado", "Apoio", "Gerente"];   // quem pode abrir chamado pela conta da loja
+// Quem pode se identificar como Gerente em cada loja (primeiro nome). Loja fora da lista: sem restrição.
+const GERENTES_LOJA = { "Vila Romana": ["Messias", "Maria", "Felipe"] };
 const SETORES = ["Mercearia", "Açougue", "Hortifruti", "Padaria", "Frios e Laticínios", "Bebidas", "Limpeza e Higiene", "Frente de caixa", "Depósito", "Outro"];
 const MODELOS = ["Oferta", "Clube Fidelidade", "Cashback"];
 const TAMANHOS = [["A4", "A4 (1 por folha)"], ["A5", "A5 (2 por folha)"], ["A6", "A6 (4 por folha)"]];
@@ -378,8 +380,11 @@ const Pessoa = {
   limpar() { this._mem = null; try { localStorage.removeItem("cs_pessoa"); } catch (e) {} }
 };
 const normNome = s => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+const gerentesDaLoja = () => GERENTES_LOJA[Store.perfil?.loja] || null;
+const podeSerGerente = nome => { const l = gerentesDaLoja(); return !l || l.some(g => normNome(nome).split(" ")[0] === normNome(g)); };
+const msgGerente = () => { const l = gerentesDaLoja() || []; return `O cargo Gerente é só para ${l.slice(0, -1).join(", ")}${l.length > 1 ? " ou " : ""}${l.slice(-1)}. Escolha Encarregado ou Apoio.`; };
 const ehMeu = p => { const eu = Pessoa.ler(); return !!eu && p.loja === Store.perfil?.loja && (p.dispositivoId === eu.id || normNome(p.solicitanteNome) === normNome(eu.nome)); };
-const ehGerenteAqui = () => ehLoja() && Pessoa.ler()?.cargo === "Gerente";
+const ehGerenteAqui = () => { const eu = ehLoja() && Pessoa.ler(); return !!eu && eu.cargo === "Gerente" && podeSerGerente(eu.nome); };
 // Na conta da loja: cada pessoa vê o que abriu; o gerente também vê os resolvidos da loja
 const visivelLoja = p => ehMeu(p) || (ehGerenteAqui() && p.status === "concluido");
 const quemSou = () => ehLoja() ? (Pessoa.ler()?.nome || Store.perfil?.nome) : Store.perfil?.nome;
@@ -565,8 +570,8 @@ function demoSemear() {
       dados: { ean: "7891234567895", descricao: "Biscoito Recheado Chocolate 130g", fornecedor: "Exemplo Alimentos" },
       obs: "Cliente no caixa e o produto não passa" },
     { ...base, id: "s3", numero: 3, tipo: "devolucao", setor: "Açougue", prioridade: "normal", status: "concluido",
-      responsavelUid: "d4", responsavelNome: "Escritório 1 (demo)", entreguePara: "Marcos (demo)", assumidoEm: now - 18 * h,
-      solicitanteUid: "d1", solicitanteNome: "Marcos (demo)", cargo: "Gerente", dispositivoId: "demo-marcos", criadoEm: now - 20 * h, atualizadoEm: now - h, concluidoEm: now - h,
+      responsavelUid: "d4", responsavelNome: "Escritório 1 (demo)", entreguePara: "Felipe (demo)", assumidoEm: now - 18 * h,
+      solicitanteUid: "d1", solicitanteNome: "Felipe (demo)", cargo: "Gerente", dispositivoId: "demo-felipe", criadoEm: now - 20 * h, atualizadoEm: now - h, concluidoEm: now - h,
       dados: { tipoDevolucao: "Divergência de quantidade", fornecedor: "Frigorífico Exemplo", nfOrigem: "458921",
         itens: [{ codigo: "80450", descricao: "ACEM BOVINO KG", qtd: "24,5" }] },
       obs: "Vieram 2 caixas a menos de acém" }
@@ -772,6 +777,7 @@ function renderIdentificacao() {
 function salvarIdentificacao(form) {
   const nome = form.nome.value.trim(), cargo = form.cargo.value;
   if (nome.length < 3) { toast("Informe nome e sobrenome.", "erro"); form.nome.focus(); return; }
+  if (cargo === "Gerente" && !podeSerGerente(nome)) { toast(msgGerente(), "erro"); form.cargo.focus(); return; }
   Pessoa.salvar(nome, cargo, true);
   toast(`Olá, ${nome.split(" ")[0]}!`, "ok");
   aba = "novo"; resetFiltros(); PEDIDOS = TODOS.filter(visivelLoja); render();
@@ -926,6 +932,7 @@ async function enviarNovo(form) {
   if (novoTipo === "devolucao") dados = { tipoDevolucao: g("tipoDevolucao"), fornecedor: g("fornecedor"), nfOrigem: g("nfOrigem"), itens: lerItens() };
   const solNome = g("solNome").replace(/\s+/g, " "), solCargo = g("solCargo");
   if (solNome.length < 3) return falha("Informe seu nome no bloco Solicitante.", form.solNome);
+  if (solCargo === "Gerente" && !podeSerGerente(solNome)) return falha(msgGerente(), form.solCargo);
   const eu = Pessoa.ler();
   if (!eu || eu.nome !== solNome || eu.cargo !== solCargo) Pessoa.salvar(solNome, solCargo);
   btn.disabled = true; btn.textContent = "Enviando…";
