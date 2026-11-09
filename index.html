@@ -972,7 +972,7 @@ function cardPedido(p) {
       ${tagPrio(p)}${atrasado(p) ? '<span class="tag atr">Atrasado</span>' : ""}
       <span class="status" style="--c:${s.cor}">${s.nome}</span></div>
     <div class="chamado-res">${esc(resumo(p))}</div>
-    <div class="chamado-meta">${isEsc() ? esc(p.loja) + " · " : ""}${ehLoja() && ehMeu(p) ? "Você" : esc(p.solicitanteNome) + (isEsc() && p.cargo ? " (" + esc(p.cargo) + ")" : "")} · ${esc(p.setor)} · ${desde(p.criadoEm)}${p.responsavelNome ? " · Resp.: " + esc(p.responsavelNome) : ""}</div>
+    <div class="chamado-meta">${isEsc() ? esc(p.loja) + " · " : ""}${ehLoja() && ehMeu(p) ? "Você" : esc(p.solicitanteNome) + (isEsc() && p.cargo ? " (" + esc(p.cargo) + ")" : "")} · ${esc(p.setor)} · ${desde(p.criadoEm)}${p.status === "concluido" && (p.resolvidoPor || p.responsavelNome) ? " · Resolvido por " + esc(p.resolvidoPor || p.responsavelNome) : p.responsavelNome ? " · Resp.: " + esc(p.responsavelNome) : ""}</div>
   </button>`;
 }
 
@@ -1136,6 +1136,7 @@ function vDetalhe(p) {
   const t = TIPOS[p.tipo] || { nome: p.tipo, cor: "#999" }, s = STATUS[p.status] || { nome: p.status, cor: "#999" }, E = isEsc();
   const info = [["Loja", p.loja], ["Setor", p.setor], ["Solicitante", p.solicitanteNome + (p.cargo ? " · " + p.cargo : "")], ["Aberto em", fmtData(p.criadoEm)],
     ["Prioridade", TIPOS[p.tipo]?.imediato ? "Imediata" : p.prioridade === "urgente" ? "Urgente" : "Normal"], ["Prazo", fmtData(prazoMs(p)) + (atrasado(p) ? " (atrasado)" : "")], ["Responsável", p.responsavelNome || "—"]];
+  if (p.status === "concluido" && (p.resolvidoPor || p.responsavelNome)) info.push(["Resolvido por", p.resolvidoPor || p.responsavelNome]);
   if (p.concluidoEm) info.push(["Resolvido em", fmtData(p.concluidoEm)]);
   if (p.entreguePara) info.push(["Entregue para", p.entreguePara]);
   return `<div class="md-head" style="--c:${t.cor}"><span class="num">${num4(p.numero)}</span><b>${t.nome}</b><button class="x-close" data-act="fechar" aria-label="Fechar">×</button></div>
@@ -1203,7 +1204,7 @@ async function executar(acao, p) {
         await Store.atualizar(p.id, { status: "andamento", responsavelUid: P.uid, responsavelNome: P.nome, assumidoEm: Date.now() }, "Assumiu o chamado"); break;
       case "resolver":
         if (!dono && !G) return negar("Só quem assumiu o chamado pode resolver.");
-        o = await dialogo({ titulo: "Resolvido e entregue", texto: `Chamado ${num4(p.numero)}. Para quem foi entregue na loja? (Se foi só ajuste no sistema, escreva "sistema".)`, placeholder: "Ex.: entregue ao encarregado da mercearia", obrigatorio: true, botao: "Confirmar" });
+        o = await dialogo({ titulo: "Resolvido e entregue", texto: `Chamado ${num4(p.numero)} será registrado como resolvido por ${P.nome}. Para quem foi entregue na loja? (Se foi só ajuste no sistema, escreva "sistema".)`, placeholder: "Ex.: entregue ao encarregado da mercearia", obrigatorio: true, botao: "Confirmar" });
         if (o === null) return;
         await Store.atualizar(p.id, { status: "concluido", concluidoEm: Date.now(), entreguePara: o, resolvidoPor: P.nome }, "Resolvido e entregue", o); break;
       case "contestar":
