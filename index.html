@@ -94,6 +94,16 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .btn-link{background:none;border:0;color:var(--verde-esc);font-weight:700;cursor:pointer;padding:0;margin-bottom:8px}
 .btn-full{width:100%}
 .form-acts{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 16px}
+.farol{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.farol button{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--borda);border-radius:12px;padding:10px 12px;cursor:pointer;text-align:left;font:inherit}
+.farol button.on{outline:2px solid var(--c)}
+.farol i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--c);box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 20%,#fff)}
+.farol b{display:block;font-size:20px;font-weight:800;line-height:1}
+.farol span{font-size:11.5px;font-weight:700;color:var(--muted)}
+@media(max-width:400px){.farol button{flex-direction:column;align-items:flex-start;gap:6px;padding:9px}.farol span{font-size:10.5px}}
+.barra-fixa{position:sticky;bottom:0;z-index:5;background:linear-gradient(to top,#fff 75%,rgba(255,255,255,0));margin:0 -18px -18px;padding:16px 18px calc(14px + env(safe-area-inset-bottom))}
+.acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
+.modal .barra-fixa{background:linear-gradient(to top,#fff 80%,rgba(255,255,255,0))}
 .x{background:none;border:0;color:var(--vermelho);font-size:12px;font-weight:700;cursor:pointer}
 .fotos{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .foto{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--borda);cursor:pointer;padding:0;background:none}
@@ -116,7 +126,7 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .filtros select{padding-right:32px}
 .filtros label.check{margin:0}
 .lista{display:flex;flex-direction:column;gap:10px}
-.chamado{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--borda);border-left:5px solid var(--c);border-radius:10px;padding:12px 14px;cursor:pointer}
+.chamado{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--borda);border-left:6px solid var(--f,var(--c));border-radius:10px;padding:12px 14px;cursor:pointer}
 .chamado:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
 .chamado-l1{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}
 .num{font-weight:800}
@@ -132,7 +142,7 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 /* Detalhe */
 .modal,.dlg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;z-index:50}
 .modal[hidden],.dlg[hidden]{display:none}
-.modal-box{background:#fff;border-radius:14px;width:100%;max-width:720px;overflow:hidden}
+.modal-box{background:#fff;border-radius:14px;width:100%;max-width:720px;overflow:clip}
 .md-head{background:var(--preto);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:4px solid var(--c)}
 .md-head .x-close{margin-left:auto;background:none;border:0;color:#fff;font-size:28px;cursor:pointer;line-height:1}
 .md-body{padding:16px}
@@ -261,19 +271,21 @@ const FIREBASE_CONFIG = {
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
+const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
+const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
 
 const LOJAS_REDE = ["Vila Romana", "Vila Leopoldina", "Santo Amaro", "Pio XI"]; // sugestões de destinatário da NF
 const BASE_PRODUTOS = "produtos.csv";                  // base de produtos (código interno, código de barras, descrição) na mesma pasta
 
-// Tipos de chamado. sla = prazo do escritório em horas. imediato = sempre urgente.
+// Tipos de chamado. sla = prazo do escritório em horas (normal: 2h, sempre até o fechamento da loja). imediato = sempre urgente.
 const TIPOS = {
-  placa:     { nome: "Placa de oferta",        curto: "Placa",     sla: 4,  cor: "#3BB072", desc: "Placas e cartazes de oferta para a loja" },
-  caixa:     { nome: "Carga para os caixas",   curto: "Carga PDV", sla: 1,  cor: "#EA580C", desc: "Mandar carga avulsa de produto para os caixas (pode pedir placa junto)" },
-  balanca:   { nome: "Carga para balanças",    curto: "Balança",   sla: 1,  cor: "#0891B2", desc: "Produto que não está entrando na balança" },
-  cadastro:  { nome: "Produto sem cadastro",   curto: "Cadastro",  sla: 24, cor: "#2563EB", desc: "Produto que não passa no caixa: envie rótulo e código de barras" },
-  ajuste:    { nome: "Ajuste de estoque",      curto: "Ajuste",    sla: 24, cor: "#B45309", desc: "Estoque do sistema diferente do físico na loja" },
+  placa:     { nome: "Placa de oferta",        curto: "Placa",     sla: 2,  cor: "#3BB072", desc: "Placas e cartazes de oferta para a loja" },
+  caixa:     { nome: "Carga para os caixas",   curto: "Carga PDV", sla: 2,  cor: "#EA580C", desc: "Mandar carga avulsa de produto para os caixas (pode pedir placa junto)" },
+  balanca:   { nome: "Carga para balanças",    curto: "Balança",   sla: 2,  cor: "#0891B2", desc: "Produto que não está entrando na balança" },
+  cadastro:  { nome: "Produto sem cadastro",   curto: "Cadastro",  sla: 2, cor: "#2563EB", desc: "Produto que não passa no caixa: envie rótulo e código de barras" },
+  ajuste:    { nome: "Ajuste de estoque",      curto: "Ajuste",    sla: 2, cor: "#B45309", desc: "Estoque do sistema diferente do físico na loja" },
   nfe:       { nome: "Emissão de nota fiscal", curto: "Emitir NF", sla: 0,  cor: "#0D9488", desc: "Nota para transferência, remessa ou outro destinatário", imediato: true },
-  devolucao: { nome: "NF de devolução",        curto: "Devolução", sla: 48, cor: "#8B5CF6", desc: "Devolução ao fornecedor: avaria, vencido, divergência" }
+  devolucao: { nome: "NF de devolução",        curto: "Devolução", sla: 2, cor: "#8B5CF6", desc: "Devolução ao fornecedor: avaria, vencido, divergência" }
 };
 
 const CARGOS_LOJA = ["Encarregado", "Apoio", "Gerente"];   // quem pode abrir chamado pela conta da loja
@@ -297,10 +309,10 @@ const TIPOS_DEVOLUCAO = ["Produto avariado", "Produto vencido / próximo do venc
    ===================================================================== */
 
 const STATUS = {
-  aberto:    { nome: "Aberto",             cor: "#2563EB" },
-  andamento: { nome: "Em andamento",       cor: "#D97706" },
-  concluido: { nome: "Resolvido e entregue", cor: "#3BB072" },
-  cancelado: { nome: "Cancelado",          cor: "#D93025" }
+  aberto:    { nome: "Pendente",           cor: "#D93025" },   // farol vermelho
+  andamento: { nome: "Em atendimento",     cor: "#C99A00" },   // farol amarelo
+  concluido: { nome: "Resolvido e entregue", cor: "#3BB072" }, // farol verde
+  cancelado: { nome: "Cancelado",          cor: "#8A8F8C" }
 };
 const ATIVOS = ["aberto", "andamento"];
 
@@ -347,14 +359,25 @@ const desde = ms => "há " + fmtDur(Date.now() - ms);
 const numero = v => { let s = String(v ?? "").trim(); if (!s) return NaN; if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); return parseFloat(s); };
 const brl = v => { const n = numero(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); };
 const num4 = n => "#" + String(n || 0).padStart(4, "0");
-const slaTxt = t => t.imediato ? `imediato (${PRAZO_URGENTE_MIN} min)` : t.sla < 24 ? t.sla + "h" : (t.sla / 24) + (t.sla === 24 ? " dia" : " dias");
-const prazoMs = p => p.criadoEm + (p.prioridade === "urgente" ? PRAZO_URGENTE_MIN * 60000 : (TIPOS[p.tipo]?.sla || 24) * 3600000);
+const slaTxt = t => t.imediato ? `imediato (${PRAZO_URGENTE_MIN} min)` : `${t.sla || PRAZO_NORMAL_H}h, até as ${LOJA_FECHA_H}h`;
+// Início da contagem: dentro do horário da loja (antes das 7h conta das 7h; depois das 21h conta das 7h do dia seguinte)
+const inicioPrazo = ms => { const d = new Date(ms), h = d.getHours();
+  if (h < LOJA_ABRE_H) d.setHours(LOJA_ABRE_H, 0, 0, 0);
+  else if (h >= LOJA_FECHA_H) { d.setDate(d.getDate() + 1); d.setHours(LOJA_ABRE_H, 0, 0, 0); }
+  return d.getTime(); };
+// Prazo: urgente 30 min, normal 2h; nunca passa do fechamento da loja (21h) do mesmo dia
+const prazoMs = p => { const ini = inicioPrazo(p.criadoEm), fecha = new Date(ini).setHours(LOJA_FECHA_H, 0, 0, 0);
+  const dur = p.prioridade === "urgente" ? PRAZO_URGENTE_MIN * 60000 : (TIPOS[p.tipo]?.sla || PRAZO_NORMAL_H) * 3600000;
+  return Math.min(ini + dur, fecha); };
 const atrasado = p => (p.status === "aberto" || p.status === "andamento") && Date.now() > prazoMs(p);
+// Passou do prazo (2h ou fechamento da loja) sem resolver: vira urgente
+const virouUrgente = p => p.prioridade !== "urgente" && atrasado(p);
+const ehUrgente = p => p.prioridade === "urgente" || virouUrgente(p);
 const fimResolucao = p => p.concluidoEm || null;
 const noPrazo = p => { const f = fimResolucao(p); return f ? f <= prazoMs(p) : false; };
 const totalPlacas = p => (p.dados?.itens || []).reduce((s, i) => s + (p.tipo === "placa" ? (parseInt(i.qtd) || 1) : i.placa ? (parseInt(i.qtdPlaca) || 1) : 0), 0);
 const balancasLoja = () => BALANCAS[Store.perfil?.loja] || ["01", "02", "03", "04"];
-const tagPrio = p => p.prioridade !== "urgente" ? "" : `<span class="tag urg">${TIPOS[p.tipo]?.imediato ? "Imediata" : "Urgente"}</span>`;
+const tagPrio = p => virouUrgente(p) ? `<span class="tag urg">Virou urgente</span>` : p.prioridade !== "urgente" ? "" : `<span class="tag urg">${TIPOS[p.tipo]?.imediato ? "Imediata" : "Urgente"}</span>`;
 const fmtQtd = n => isNaN(n) ? "—" : n.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 const difAjuste = i => numero(i.fisico) - numero(i.sistema);
 const nomeItem = i => i.descricao || "Cód. " + (i.codigo || "?");
@@ -671,7 +694,7 @@ const Store = {
 /* ---------- estado da tela ---------- */
 let TODOS = [], PEDIDOS = [], aba = "novo", filtros, novoTipo = null, novoFotos = [], aberto = null, periodo = "7";
 let unsub = null, conhecidos = new Set(), primeiraCarga = true;
-const resetFiltros = () => filtros = { status: "ativos", tipo: "todos", loja: "todas", busca: "", meus: false, atrasados: false };
+const resetFiltros = () => filtros = { status: "todos", tipo: "todos", loja: "todas", busca: "", meus: false, atrasados: false };
 resetFiltros();
 const cnt = s => PEDIDOS.filter(p => p.status === s).length;
 
@@ -881,7 +904,7 @@ function vNovo() {
       <label><span id="obsRot">Observação (opcional)</span><textarea name="obs" rows="3" placeholder="Algo que o escritório precisa saber?"></textarea></label>
       <label>${fotosRot}<input type="file" accept="image/*" multiple id="fotosInput"></label>
       <div id="fotosPrev" class="fotos"></div>
-      <button class="btn btn-full" type="submit">Abrir chamado</button>
+      <div class="barra-fixa"><button class="btn btn-full" type="submit">Abrir chamado</button></div>
     </form>`;
 }
 
@@ -965,7 +988,7 @@ function filtrar() {
   return l.sort((a, b) => {
     if (ativo(a) !== ativo(b)) return ativo(a) ? -1 : 1;
     if (!ativo(a)) return (b.atualizadoEm || 0) - (a.atualizadoEm || 0);
-    const ua = a.prioridade === "urgente", ub = b.prioridade === "urgente"; if (ua !== ub) return ua ? -1 : 1;
+    const ua = ehUrgente(a), ub = ehUrgente(b); if (ua !== ub) return ua ? -1 : 1;
     const aa = atrasado(a), ab = atrasado(b); if (aa !== ab) return aa ? -1 : 1;
     return a.criadoEm - b.criadoEm;
   });
@@ -973,9 +996,9 @@ function filtrar() {
 
 function cardPedido(p) {
   const t = TIPOS[p.tipo] || { curto: p.tipo, cor: "#999" }, s = STATUS[p.status] || { nome: p.status, cor: "#999" };
-  return `<button class="chamado" data-act="abrir" data-id="${esc(p.id)}" style="--c:${t.cor}">
+  return `<button class="chamado" data-act="abrir" data-id="${esc(p.id)}" style="--c:${t.cor};--f:${s.cor}">
     <div class="chamado-l1"><span class="num">${num4(p.numero)}</span><span class="tag" style="--c:${t.cor}">${t.curto}</span>
-      ${tagPrio(p)}${atrasado(p) ? '<span class="tag atr">Atrasado</span>' : ""}
+      ${tagPrio(p)}${atrasado(p) && p.prioridade === "urgente" ? '<span class="tag atr">Atrasado</span>' : ""}
       <span class="status" style="--c:${s.cor}">${s.nome}</span></div>
     <div class="chamado-res">${esc(resumo(p))}</div>
     <div class="chamado-meta">${isEsc() ? esc(p.loja) + " · " : ""}${ehLoja() && ehMeu(p) ? "Você" : esc(p.solicitanteNome) + (isEsc() && p.cargo ? " (" + esc(p.cargo) + ")" : "")} · ${esc(p.setor)} · ${desde(p.criadoEm)}${p.status === "concluido" && (p.resolvidoPor || p.responsavelNome) ? " · Resolvido por " + esc(p.resolvidoPor || p.responsavelNome) : p.responsavelNome ? " · Resp.: " + esc(p.responsavelNome) : ""}</div>
@@ -989,14 +1012,21 @@ function listaHTML() {
 
 function chipsStatus() {
   const lista = isEsc()
-    ? [["ativos", "Ativos"], ["aberto", "Abertos"], ["andamento", "Em andamento"], ["concluido", "Resolvidos"], ["cancelado", "Cancelados"], ["todos", "Todos"]]
-    : [["ativos", "Em aberto"], ["concluido", "Resolvidos"], ["cancelado", "Cancelados"], ["todos", "Todos"]];
+    ? [["todos", "Todos"], ["ativos", "Ativos"], ["aberto", "Pendentes"], ["andamento", "Em atendimento"], ["concluido", "Resolvidos"], ["cancelado", "Cancelados"]]
+    : [["todos", "Todos"], ["ativos", "Em aberto"], ["concluido", "Resolvidos"], ["cancelado", "Cancelados"]];
   return lista.map(([v, n]) => `<button class="chip ${filtros.status === v && !filtros.atrasados ? "on" : ""}" data-act="chip" data-v="${v}">${n}</button>`).join("");
+}
+
+function farolHTML() {
+  const n = st => PEDIDOS.filter(p => p.status === st).length;
+  const b = (st, rot) => `<button class="${filtros.status === st && !filtros.atrasados ? "on" : ""}" data-act="chip" data-v="${filtros.status === st ? "todos" : st}" style="--c:${STATUS[st].cor}"><i></i><div><b>${n(st)}</b><span>${rot}</span></div></button>`;
+  return `<div class="farol">${b("aberto", "Pendentes")}${b("andamento", "Em atendimento")}${b("concluido", "Concluídos")}</div>`;
 }
 
 function vMeus() {
   const ger = ehGerenteAqui();
   return `<div class="banner neutro">${ger ? "Aqui aparecem os chamados que <b>você</b> abriu e os <b>resolvidos da loja</b>. " : "Aqui aparecem os chamados que <b>você</b> abriu. "}<b>Resolvido</b> = o escritório já entregou na loja. Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</div>
+    ${farolHTML()}
     <div class="filtros">${chipsStatus()}</div>
     <div class="filtros">
       <input type="search" data-f="busca" placeholder="Buscar nº, código, produto, NF…" value="${esc(filtros.busca)}">
@@ -1007,16 +1037,15 @@ function vMeus() {
 
 function vFila() {
   const atr = PEDIDOS.filter(atrasado).length;
-  const urg = PEDIDOS.filter(p => p.status === "aberto" && p.prioridade === "urgente");
+  const urg = PEDIDOS.filter(p => p.status === "aberto" && ehUrgente(p));
   const kpi = (k, n, cor, rot) => `<button class="kpi ${(k === "atr" ? filtros.atrasados : k === "meus" ? filtros.meus : (!filtros.atrasados && filtros.status === k)) ? "on" : ""}" data-act="kpi" data-v="${k}" style="--c:${cor}"><b>${n}</b><span>${rot}</span></button>`;
   return `${urg.length ? `<button class="alerta-urg" data-act="abrir" data-id="${esc(urg.sort((a, b) => a.criadoEm - b.criadoEm)[0].id)}">
       <b>${urg.length} chamado${urg.length > 1 ? "s" : ""} URGENTE${urg.length > 1 ? "S" : ""} sem responsável</b>
       <span>${urg.map(p => num4(p.numero) + " · " + esc(TIPOS[p.tipo]?.curto || "") + " · " + desde(p.criadoEm)).join("  |  ")} — toque para abrir</span></button>` : ""}
+    ${farolHTML()}
     <div class="kpis">
-      ${kpi("aberto", cnt("aberto"), STATUS.aberto.cor, "Abertos — ninguém pegou")}
       ${kpi("meus", PEDIDOS.filter(p => p.status === "andamento" && ehResponsavel(p)).length, "#111111", "Comigo — eu assumi")}
-      ${kpi("andamento", cnt("andamento"), STATUS.andamento.cor, "Em andamento (todos)")}
-      ${kpi("atr", atr, "#D93025", "Atrasados (fora do prazo)")}
+      ${kpi("atr", atr, "#D93025", "Viraram urgentes (fora do prazo)")}
     </div>
     <div class="filtros">${chipsStatus()}</div>
     <div class="filtros">
@@ -1075,10 +1104,10 @@ function vPainel() {
       <p><b>Chamados no período:</b> chamados abertos pela loja dentro do período escolhido acima. Cancelados não entram na conta.</p>
       <p><b>Tempo médio até assumir:</b> quanto tempo o chamado fica esperando até alguém do escritório pegar. Mostra se a fila está sendo olhada.</p>
       <p><b>Tempo médio de resolução:</b> tempo entre a loja abrir o chamado e o escritório marcar como resolvido e entregue.</p>
-      <p><b>Resolvidos no prazo (meta 90%):</b> % dos chamados resolvidos dentro do prazo do tipo: ${Object.values(TIPOS).map(t => t.nome + " " + slaTxt(t)).join(", ")}; urgente ${PRAZO_URGENTE_MIN} min em qualquer tipo. Abaixo de 90% aparece em laranja.</p>
+      <p><b>Resolvidos no prazo (meta 90%):</b> % dos chamados resolvidos dentro do prazo: normal ${PRAZO_NORMAL_H}h, urgente e emissão de NF ${PRAZO_URGENTE_MIN} min, sempre até as ${LOJA_FECHA_H}h do mesmo dia (horário da loja: ${LOJA_ABRE_H}h às ${LOJA_FECHA_H}h). Abaixo de 90% aparece em laranja.</p>
       <p><b>Urgentes no período:</b> chamados que a loja marcou como urgentes. Muitos urgentes podem indicar falta de planejamento (ex.: placas pedidas só no dia da oferta).</p>
       <p><b>Reabertos pela loja:</b> % de chamados marcados como resolvidos que a loja disse não ter recebido. Referência de mercado: abaixo de 5%.</p>
-      <p><b>Atrasados agora:</b> chamados que ainda estão abertos ou em andamento e já passaram do prazo.</p>
+      <p><b>Atrasados agora:</b> chamados pendentes ou em atendimento que já passaram do prazo. Chamado normal que passa do prazo (2h ou 21h) vira urgente automaticamente.</p>
       <p><b>Quem resolve (5):</b> chamados por pessoa do escritório, com o tempo médio e o % no prazo de cada uma. "Sem responsável" são chamados que ninguém assumiu.</p>
       <p><b>Rankings (2 a 5):</b> sempre do maior para o menor volume. Muitos chamados do mesmo setor ou da mesma pessoa podem indicar um problema que se repete na loja (ex.: muitos produtos sem cadastro na mesma seção).</p>
     </div></div>`;
@@ -1135,20 +1164,20 @@ function acoesHTML(p) {
     dica = `Chamado aberto por ${esc(p.solicitanteNome)}. Você está vendo porque é gerente da loja.`;
   }
   if (!L.length && !dica) return "";
-  return `<div class="sec-tit">Ações</div>${L.length ? `<div class="acoes">${L.join("")}</div>` : ""}${dica ? `<p class="dica">${dica}</p>` : ""}`;
+  return `<div class="sec-tit">Ações</div>${dica ? `<p class="dica">${dica}</p>` : ""}${L.length ? `<div class="barra-fixa acoes-fixas"><div class="acoes">${L.join("")}</div></div>` : ""}`;
 }
 
 function vDetalhe(p) {
   const t = TIPOS[p.tipo] || { nome: p.tipo, cor: "#999" }, s = STATUS[p.status] || { nome: p.status, cor: "#999" }, E = isEsc();
   const info = [["Loja", p.loja], ["Setor", p.setor], ["Solicitante", p.solicitanteNome + (p.cargo ? " · " + p.cargo : "")], ["Aberto em", fmtData(p.criadoEm)],
-    ["Prioridade", TIPOS[p.tipo]?.imediato ? "Imediata" : p.prioridade === "urgente" ? "Urgente" : "Normal"], ["Prazo", fmtData(prazoMs(p)) + (atrasado(p) ? " (atrasado)" : "")], ["Responsável", p.responsavelNome || "—"]];
+    ["Prioridade", TIPOS[p.tipo]?.imediato ? "Imediata" : p.prioridade === "urgente" ? "Urgente" : virouUrgente(p) ? "Virou urgente (passou do prazo)" : "Normal"], ["Prazo", fmtData(prazoMs(p)) + (atrasado(p) ? " (vencido)" : "")], ["Responsável", p.responsavelNome || "—"]];
   if (p.status === "concluido" && (p.resolvidoPor || p.responsavelNome)) info.push(["Resolvido por", p.resolvidoPor || p.responsavelNome]);
   if (p.concluidoEm) info.push(["Resolvido em", fmtData(p.concluidoEm)]);
   if (p.entreguePara) info.push(["Entregue para", p.entreguePara]);
   return `<div class="md-head" style="--c:${t.cor}"><span class="num">${num4(p.numero)}</span><b>${t.nome}</b><button class="x-close" data-act="fechar" aria-label="Fechar">×</button></div>
   <div class="md-body">
     <div class="chamado-l1"><span class="status" style="--c:${s.cor};margin-left:0">${s.nome}</span>
-      ${tagPrio(p)}${atrasado(p) ? '<span class="tag atr">Atrasado</span>' : ""}</div>
+      ${tagPrio(p)}${atrasado(p) && p.prioridade === "urgente" ? '<span class="tag atr">Atrasado</span>' : ""}</div>
     <dl class="info">${info.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
     ${blocoDados(p)}
     ${p.obs ? `<div class="sec-tit">Observação</div><p style="margin:0 0 8px;white-space:pre-wrap">${esc(p.obs)}</p>` : ""}
@@ -1310,16 +1339,16 @@ document.addEventListener("click", e => {
         .then(o => { if (o === null) return; Pessoa.limpar(); fecharDetalhe(); PEDIDOS = []; renderIdentificacao(); });
       break;
     case "aba": aba = el.dataset.aba; resetFiltros(); render(); window.scrollTo(0, 0); break;
-    case "escolherTipo": novoTipo = el.dataset.tipo; novoFotos = []; render(); break;
-    case "voltarTipo": novoTipo = null; novoFotos = []; render(); break;
-    case "addItem": $("#itens").insertAdjacentHTML("beforeend", itemHTML(novoTipo)); break;
+    case "escolherTipo": novoTipo = el.dataset.tipo; novoFotos = []; render(); window.scrollTo({ top: 0, behavior: "smooth" }); setTimeout(() => $("#fNovo [name=solNome]")?.value ? $("#fNovo [name=setor]")?.focus({ preventScroll: true }) : $("#fNovo [name=solNome]")?.focus({ preventScroll: true }), 300); break;
+    case "voltarTipo": novoTipo = null; novoFotos = []; render(); window.scrollTo({ top: 0, behavior: "smooth" }); break;
+    case "addItem": { $("#itens").insertAdjacentHTML("beforeend", itemHTML(novoTipo)); const novo = $("#itens").lastElementChild; novo.scrollIntoView({ behavior: "smooth", block: "center" }); novo.querySelector("input[data-f=cod]")?.focus({ preventScroll: true }); break; }
     case "rmItem":
       if (document.querySelectorAll("#itens .item").length > 1) el.closest(".item").remove();
       else toast("O chamado precisa de pelo menos um produto."); break;
     case "escolherProd": { const inp = el.closest(".item").querySelector("input[data-f=cod]"); inp.value = el.dataset.cod; infoCodigo(inp); break; }
     case "scan": escanear(el.closest(".cod-in").querySelector("input")); break;
     case "rmFoto": novoFotos.splice(+el.dataset.i, 1); renderFotos(); break;
-    case "chip": filtros.status = el.dataset.v; filtros.atrasados = false; render(); break;
+    case "chip": filtros.status = el.dataset.v; filtros.atrasados = false; render(); $("#lista")?.scrollIntoView({ behavior: "smooth", block: "start" }); break;
     case "kpi":
       if (el.dataset.v === "meus") { filtros.meus = !filtros.meus; }
       else if (el.dataset.v === "atr") { filtros.atrasados = !filtros.atrasados; filtros.status = "ativos"; }
@@ -1373,7 +1402,7 @@ document.addEventListener("submit", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#dlg").hidden && aberto) fecharDetalhe(); });
 window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v4" && Store.modo === "demo") Store._avisar(); });
 // Escritório: apita a cada 45s enquanto houver URGENTE sem responsável
-setInterval(() => { if (isEsc() && PEDIDOS.some(p => p.status === "aberto" && p.prioridade === "urgente")) { beep(); setTimeout(beep, 250); } }, 45000);
+setInterval(() => { if (isEsc() && PEDIDOS.some(p => p.status === "aberto" && ehUrgente(p))) { beep(); setTimeout(beep, 250); } if ((aba === "fila" || aba === "meus") && $("#modal").hidden && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "")) render(); }, 45000);
 // Atualiza "há X min" e atrasos a cada minuto
 setInterval(() => { if (Store.perfil && !aberto && $("#dlg").hidden) refrescar(); }, 60000);
 
