@@ -233,13 +233,14 @@ input:disabled{background:#F3F4F6;color:#8A1C12;font-weight:700}
 
 // Cole aqui o firebaseConfig do projeto (Console Firebase > Configurações do projeto > Seus apps).
 // Enquanto apiKey estiver vazio, o sistema roda em MODO DEMONSTRAÇÃO (dados só no navegador).
+// Para treinar sem mexer nos dados reais, abra o endereço com ?demo no final (ex.: .../superville-chamados/?demo).
 const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyDhVoik8SOe_TixIvxgmubNA3r3H4kmPtw",
+  authDomain: "superville-chamados.firebaseapp.com",
+  projectId: "superville-chamados",
+  storageBucket: "superville-chamados.firebasestorage.app",
+  messagingSenderId: "348359218969",
+  appId: "1:348359218969:web:c1efe3e169817d1cc85788"
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
@@ -541,7 +542,7 @@ const Store = {
   modo: "demo", perfil: null, _fb: null, _listeners: new Set(),
 
   async iniciar() {
-    if (!FIREBASE_CONFIG.apiKey) { this.modo = "demo"; return; }
+    if (!FIREBASE_CONFIG.apiKey || new URLSearchParams(location.search).has("demo")) { this.modo = "demo"; return; }
     const base = "https://www.gstatic.com/firebasejs/10.12.2/";
     const [appM, authM, fsM] = await Promise.all([import(base + "firebase-app.js"), import(base + "firebase-auth.js"), import(base + "firebase-firestore.js")]);
     const app = appM.initializeApp(FIREBASE_CONFIG);

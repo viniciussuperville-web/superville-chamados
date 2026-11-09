@@ -3,6 +3,13 @@
 Portal para a loja abrir chamados ao escritório administrativo sem subir pessoalmente. **Regra: só entra no portal o que o escritório resolve mexendo no sistema** (placas, cargas de caixa e balança, cadastro, ajuste de estoque, notas fiscais). Suprimentos, troco, DP e fornecedores seguem pelos seus próprios departamentos.
 Piloto: **Vila Romana (Coriolano)**. Funciona em **Android, iPhone (iOS) e computador**, pelo navegador.
 
+## Situação (09/11/2026)
+- ✅ Repositório `superville-chamados` criado e publicado no GitHub Pages: https://viniciussuperville-web.github.io/superville-chamados/
+- ✅ Firebase `superville-chamados` criado: login por e-mail/senha ativo, domínio do GitHub autorizado, Firestore em São Paulo e regras de segurança publicadas (passo 8)
+- ✅ `FIREBASE_CONFIG` já preenchido no `index.html`
+- ⏳ Falta: cadastrar os usuários (passo 7), começando pelo seu (perfil `gestor`)
+- Modo demonstração para treino: https://viniciussuperville-web.github.io/superville-chamados/?demo
+
 ## Sumário
 1. Como funciona
 2. Quem vê o quê (perfis)
