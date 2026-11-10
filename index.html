@@ -104,6 +104,7 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .barra-fixa{position:sticky;bottom:0;z-index:5;background:linear-gradient(to top,#fff 75%,rgba(255,255,255,0));margin:0 -18px -18px;padding:16px 18px calc(14px + env(safe-area-inset-bottom))}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
+label[hidden]{display:none!important}
 .sr-sel{position:absolute!important;opacity:0!important;pointer-events:none;width:1px!important;height:1px!important;padding:0!important;border:0!important}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chips.lista{flex-direction:column}
@@ -334,6 +335,14 @@ const TIPOS = {
 const CARGOS_LOJA = ["Encarregado", "Apoio", "Gerente"];   // quem pode abrir chamado pela conta da loja
 // Quem pode se identificar como Gerente em cada loja (primeiro nome). Loja fora da lista: sem restrição.
 const GERENTES_LOJA = { "Vila Romana": ["Messias", "Maria", "Felipe"] };
+// Senha que só os gerentes sabem (pedida ao escolher o cargo Gerente). Guardada só como SHA-256 do texto em minúsculas.
+// Para trocar: gere o SHA-256 da nova senha em minúsculas e cole aqui.
+const SENHA_GERENTE_SHA256 = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
+async function senhaGerenteOk(txt) {
+  const dados = new TextEncoder().encode(String(txt || "").trim().toLowerCase());
+  const h = await crypto.subtle.digest("SHA-256", dados);
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("") === SENHA_GERENTE_SHA256;
+}
 const SETORES = ["Mercearia", "Açougue", "Hortifruti", "Padaria", "Frios e Laticínios", "Bebidas", "Limpeza e Higiene", "Frente de caixa", "Depósito", "Outro"];
 const MODELOS = ["Oferta", "Clube Fidelidade", "Cashback"];
 const TAMANHOS = [["A4", "A4 (1 por folha)"], ["A5", "A5 (2 por folha)"], ["A6", "A6 (4 por folha)"]];
@@ -437,9 +446,10 @@ const Pessoa = {
     try { const s = localStorage.getItem("cs_pessoa"); if (s) this._mem = JSON.parse(s); } catch (e) {}
     return this._mem;
   },
-  salvar(nome, cargo, novoAparelho = false) {
+  salvar(nome, cargo, novoAparelho = false, gerenteOk = false) {
     const atual = novoAparelho ? null : this.ler();
     const p = { id: atual?.id || "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), nome: nome.trim().replace(/\s+/g, " "), cargo };
+    if (cargo === "Gerente" && (gerenteOk || atual?.gerenteOk)) p.gerenteOk = true;
     this._mem = p; try { localStorage.setItem("cs_pessoa", JSON.stringify(p)); } catch (e) {}
     return p;
   },
@@ -450,7 +460,7 @@ const gerentesDaLoja = () => GERENTES_LOJA[Store.perfil?.loja] || null;
 const podeSerGerente = nome => { const l = gerentesDaLoja(); return !l || l.some(g => normNome(nome).split(" ")[0] === normNome(g)); };
 const msgGerente = () => { const l = gerentesDaLoja() || []; return `O cargo Gerente é só para ${l.slice(0, -1).join(", ")}${l.length > 1 ? " ou " : ""}${l.slice(-1)}. Escolha Encarregado ou Apoio.`; };
 const ehMeu = p => { const eu = Pessoa.ler(); return !!eu && p.loja === Store.perfil?.loja && (p.dispositivoId === eu.id || normNome(p.solicitanteNome) === normNome(eu.nome)); };
-const ehGerenteAqui = () => { const eu = ehLoja() && Pessoa.ler(); return !!eu && eu.cargo === "Gerente" && podeSerGerente(eu.nome); };
+const ehGerenteAqui = () => { const eu = ehLoja() && Pessoa.ler(); return !!eu && eu.cargo === "Gerente" && eu.gerenteOk === true && podeSerGerente(eu.nome); };
 // Na conta da loja: cada pessoa vê o que abriu; o gerente também vê os resolvidos da loja
 const visivelLoja = p => ehMeu(p) || (ehGerenteAqui() && p.status === "concluido");
 const quemSou = () => ehLoja() ? (Pessoa.ler()?.nome || Store.perfil?.nome) : Store.perfil?.nome;
@@ -837,16 +847,22 @@ function renderIdentificacao() {
       <p class="muted">Este celular está conectado à conta da <b>Loja ${esc(Store.perfil.loja)}</b>. Informe seus dados uma vez: eles ficam guardados aqui e já vêm preenchidos em cada chamado.</p>
       <label>Seu nome<input name="nome" required autocomplete="name" value="${esc(eu?.nome || "")}" placeholder="Nome e sobrenome"></label>
       <label>Cargo<select name="cargo" required><option value="">Selecione</option>${opts(CARGOS_LOJA, eu?.cargo)}</select></label>
+      <label id="senhaGer" ${eu?.cargo === "Gerente" ? "" : "hidden"}>Senha do gerente<input name="senhaGerente" type="password" autocomplete="off" placeholder="Só os gerentes sabem" ${eu?.cargo === "Gerente" ? "required" : ""}></label>
       <button class="btn btn-full" type="submit">Continuar</button>
     </form>`;
   chipify();
 }
-function salvarIdentificacao(form) {
+async function salvarIdentificacao(form) {
   if (!validar(form)) return;
   const nome = form.nome.value.trim(), cargo = form.cargo.value;
   if (nome.length < 3) { toast("Informe nome e sobrenome.", "erro"); form.nome.focus(); return; }
   if (cargo === "Gerente" && !podeSerGerente(nome)) { toast(msgGerente(), "erro"); form.cargo.focus(); return; }
-  Pessoa.salvar(nome, cargo, true);
+  let gerenteOk = false;
+  if (cargo === "Gerente") {
+    gerenteOk = await senhaGerenteOk(form.senhaGerente.value);
+    if (!gerenteOk) { form.senhaGerente.value = ""; marcarFalta($("#senhaGer"), "Senha do gerente incorreta."); form.senhaGerente.focus({ preventScroll: true }); return; }
+  }
+  Pessoa.salvar(nome, cargo, true, gerenteOk);
   toast(`Olá, ${nome.split(" ")[0]}!`, "ok");
   aba = "novo"; resetFiltros(); PEDIDOS = TODOS.filter(visivelLoja); render();
 }
@@ -1423,7 +1439,7 @@ function iniciarSessao() {
   primeiraCarga = true; conhecidos = new Set();
   if (unsub) unsub();
   unsub = Store.observarPedidos(onPedidos);
-  if (ehLoja() && !Pessoa.ler()) { renderIdentificacao(); return; }
+  if (ehLoja() && (!Pessoa.ler() || (Pessoa.ler().cargo === "Gerente" && !Pessoa.ler().gerenteOk))) { renderIdentificacao(); return; }
   render();
 }
 
@@ -1493,6 +1509,10 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", e => {
   limparFalta(e.target);
+  if (e.target.name === "cargo" && e.target.form?.id === "fPessoa") {
+    const ger = e.target.value === "Gerente", box = $("#senhaGer"), inp = box?.querySelector("input");
+    if (box) { box.hidden = !ger; inp.required = ger; if (!ger) inp.value = ""; else setTimeout(() => inp.focus(), 200); }
+  }
   if (e.target.name === "balanca" || e.target.dataset?.f === "todasBal") e.target.closest(".balancas")?.classList.remove("falta");
   const f = e.target.dataset?.f;
   if (f === "tipo" || f === "loja") { filtros[f] = e.target.value; render(); }
