@@ -145,6 +145,9 @@ label.falta input,label.falta textarea,label.falta .chips button,label.falta sel
 .quem-pede .btn-link{margin:0}
 /* Foto */
 .btn-foto{flex-direction:row!important;align-items:center;justify-content:center;gap:10px;border:2px dashed #9BB8A6;border-radius:12px;padding:16px;background:#F6FAF7;font-size:15px!important;font-weight:700!important;color:#14532D;cursor:pointer}
+.fotos-botoes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}
+.fotos-botoes .btn-foto{flex-direction:column!important;gap:4px;padding:14px 8px;margin:0}
+.fotos-botoes .ico{font-size:28px;line-height:1}
 /* Chamado enviado */
 .ok-card{text-align:center;padding:30px 18px}
 .ok-card .ok-ico{width:76px;height:76px;border-radius:50%;background:var(--verde);color:#fff;font-size:44px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
@@ -1044,7 +1047,10 @@ function vNovo() {
       ${corpo}
       <label><span id="obsRot">Observação (opcional)</span><textarea name="obs" rows="3" placeholder="Algo que o escritório precisa saber?"></textarea></label>
       <div class="sec-tit">${fotosRot}</div>
-      <label class="btn-foto"><input type="file" accept="image/*" multiple id="fotosInput" class="sr-sel">📷 Tirar ou escolher foto</label>
+      <div class="fotos-botoes" id="fotosInput">
+        <label class="btn-foto"><input type="file" accept="image/*" capture="environment" data-foto class="sr-sel"><span class="ico">📷</span>Tirar foto</label>
+        <label class="btn-foto"><input type="file" accept="image/*" multiple data-foto class="sr-sel"><span class="ico">🖼️</span>Galeria</label>
+      </div>
       <div id="fotosPrev" class="fotos"></div>
       <div class="barra-fixa"><button class="btn btn-full" type="submit">Abrir chamado</button></div>
     </form>`;
@@ -1593,7 +1599,7 @@ document.addEventListener("change", e => {
   else if (e.target.name === "balanca" && !e.target.checked) { const t = document.querySelector("[data-f=todasBal]"); if (t) t.checked = false; }
   else if (f === "prioridade") { const u = e.target.value === "urgente"; $("#urgAviso").hidden = !u; $("#obsRot").textContent = u ? "Por que é urgente? (obrigatório)" : "Observação (opcional)"; const o = document.querySelector("#fNovo [name=obs]"); if (o) o.required = u; }
   else if (f === "meus") { filtros.meus = e.target.checked; render(); }
-  else if (e.target.id === "fotosInput") { addFotos([...e.target.files]); e.target.value = ""; }
+  else if (e.target.dataset?.foto !== undefined && e.target.type === "file") { addFotos([...e.target.files]); e.target.value = ""; }
 });
 const limparFalta = el => { const f = el?.closest?.(".falta"); if (f) { f.classList.remove("falta"); $("#toast")?.classList.remove("show"); } };
 document.addEventListener("input", e => {
