@@ -105,6 +105,12 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
+.aovivo{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted);padding:6px 12px;background:#F4FAF6;border-bottom:1px solid #E5EFE8}
+.aovivo i{width:9px;height:9px;border-radius:50%;background:#3BB072;box-shadow:0 0 0 0 rgba(59,176,114,.6);animation:pulsa 2s infinite}
+.aovivo.off{background:#FDECEA;color:#8A1C12}
+.aovivo i.off{background:#D93025;animation:none}
+@keyframes pulsa{0%{box-shadow:0 0 0 0 rgba(59,176,114,.55)}70%{box-shadow:0 0 0 7px rgba(59,176,114,0)}100%{box-shadow:0 0 0 0 rgba(59,176,114,0)}}
+.nova-versao{display:block;width:100%;border:0;background:#111;color:#fff;font:inherit;font-size:13px;font-weight:700;padding:10px 14px;cursor:pointer}
 /* Pop-up de aviso (novo chamado / chamado resolvido) */
 .aviso{position:fixed;inset:0;z-index:300;background:rgba(17,17,17,.55);display:flex;align-items:center;justify-content:center;padding:18px;animation:avisoFundo .2s ease}
 .aviso[hidden]{display:none}
@@ -333,6 +339,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
+const VERSAO_APP = "teste-nova";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -802,10 +809,49 @@ function montarTopo() {
     <div class="h-tit"><b>Portal de Chamados</b><small>${isGestor() ? "Gestor · acesso total" : E ? "Escritório" : "Loja " + esc(P.loja)}${Store.modo === "demo" ? " · modo demonstração" : ""}</small></div>
     <div class="h-user">${ehLoja() && Pessoa.ler() ? `<b>${esc(Pessoa.ler().nome)}</b>${esc(Pessoa.ler().cargo)}` : `<b>${esc(P.nome)}</b>${esc(P.cargo || "")}`}</div>
     <button class="btn-sair" data-act="sair">Sair</button></header>
-    <nav class="abas">${abas.map(([k, n, c]) => `<button class="aba ${aba === k ? "on" : ""}" data-act="aba" data-aba="${k}">${n}${c ? `<span class="badge">${c}</span>` : ""}</button>`).join("")}</nav>`;
+    <nav class="abas">${abas.map(([k, n, c]) => `<button class="aba ${aba === k ? "on" : ""}" data-act="aba" data-aba="${k}">${n}${c ? `<span class="badge">${c}</span>` : ""}</button>`).join("")}</nav>
+    ${versaoNova ? `<button class="nova-versao" data-act="recarregar">🔄 O portal foi atualizado. Toque aqui para carregar a versão nova.</button>` : ""}
+    <div id="aovivo" class="aovivo">${aoVivoHTML()}</div>`;
   const ab = cnt("aberto");
   document.title = (E && ab ? `(${ab}) ` : "") + "Portal de Chamados | SuperVille";
 }
+
+/* ---------- atualização constante ---------- */
+let ultimaSync = Date.now(), versaoNova = false, wakeLock = null;
+const hhmmss = t => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+function aoVivoHTML() {
+  return navigator.onLine
+    ? `<i></i><b>Ao vivo</b> · chamados atualizam sozinhos · última mudança às ${hhmmss(ultimaSync).slice(0, 5)}`
+    : `<i class="off"></i><b>Sem internet</b> · os chamados voltam a atualizar quando a conexão voltar`;
+}
+function atualizarAoVivo() { const el = $("#aovivo"); if (el) { el.innerHTML = aoVivoHTML(); el.classList.toggle("off", !navigator.onLine); } }
+const telaLivre = () => $("#modal").hidden && $("#dlg").hidden && !(aba === "novo" && novoTipo) && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "");
+async function checarVersao() {
+  if (location.protocol === "file:") return;
+  try {
+    const r = await fetch(location.pathname + "?nocache=" + Date.now(), { cache: "no-store" });
+    const m = (await r.text()).match(/const VERSAO_APP = "([^"]+)"/);
+    if (m && m[1] !== VERSAO_APP) {
+      if (telaLivre()) location.reload();
+      else if (!versaoNova) { versaoNova = true; montarTopo(); }
+    }
+  } catch (e) {}
+}
+// Escritório: mantém a tela ligada enquanto o portal estiver aberto
+async function manterTelaLigada() {
+  try { if (isEsc() && "wakeLock" in navigator && document.visibilityState === "visible" && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+}
+function voltouParaTela() {
+  if (!Store.perfil) return;
+  atualizarAoVivo(); manterTelaLigada(); checarVersao();
+  if (!aberto && $("#dlg").hidden) refrescar();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") voltouParaTela(); });
+window.addEventListener("online", () => { toast("Internet de volta. Chamados atualizados.", "ok"); voltouParaTela(); });
+window.addEventListener("offline", () => { atualizarAoVivo(); toast("Sem internet: os chamados não estão atualizando.", "erro"); });
+window.addEventListener("focus", voltouParaTela);
+setInterval(atualizarAoVivo, 10000);
+setInterval(checarVersao, 3 * 60000);
 
 function render() {
   if (!Store.perfil) return;
@@ -1488,6 +1534,7 @@ document.addEventListener("click", () => { try { if ("Notification" in window &&
 /* ---------- sessão ---------- */
 let statusAnt = new Map();
 function onPedidos(lista) {
+  ultimaSync = Date.now(); setTimeout(atualizarAoVivo, 0);
   avisosDe(lista);
   statusAnt = new Map(lista.map(p => [p.id, p.status]));
   conhecidos = new Set(lista.map(p => p.id)); primeiraCarga = false;
@@ -1503,6 +1550,7 @@ function iniciarSessao() {
   primeiraCarga = true; conhecidos = new Set(); statusAnt = new Map(); avisos = []; $("#aviso").hidden = true;
   if (unsub) unsub();
   unsub = Store.observarPedidos(onPedidos);
+  manterTelaLigada();
   if (ehLoja() && (!Pessoa.ler() || (Pessoa.ler().cargo === "Gerente" && !Pessoa.ler().gerenteOk))) { renderIdentificacao(); return; }
   render();
 }
@@ -1565,6 +1613,7 @@ document.addEventListener("click", e => {
     case "periodo": periodo = el.dataset.v; render(); break;
     case "imprimir": window.print(); break;
     case "abrir": abrirDetalhe(el.dataset.id); break;
+    case "recarregar": location.reload(); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": { const id = el.dataset.id; avisos = avisos.filter(a => a.id !== id); renderAviso();
       if (!isEsc()) { aba = "meus"; resetFiltros(); render(); } abrirDetalhe(id); break; }
@@ -1625,7 +1674,7 @@ window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v4" &&
 // Escritório: apita a cada 45s enquanto houver URGENTE sem responsável
 setInterval(() => { if (isEsc() && PEDIDOS.some(p => p.status === "aberto" && ehUrgente(p))) { beep(); setTimeout(beep, 250); } }, 45000);
 // Atualiza "há X min" e atrasos a cada minuto
-setInterval(() => { if (Store.perfil && !aberto && $("#dlg").hidden) refrescar(); }, 60000);
+setInterval(() => { if (Store.perfil && !aberto && $("#dlg").hidden) refrescar(); }, 30000);
 
 /* ---------- início ---------- */
 (async () => {
