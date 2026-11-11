@@ -105,6 +105,12 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
+.scan-box{position:relative;width:100%;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.scan-box video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-mira{position:absolute;left:5%;right:5%;top:27.5%;bottom:27.5%;border:3px solid rgba(255,255,255,.9);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.scan-mira i{position:absolute;left:6%;right:6%;top:50%;height:2px;background:#FF3B30;box-shadow:0 0 8px #FF3B30;animation:mira 1.6s ease-in-out infinite}
+@keyframes mira{50%{opacity:.35}}
+.scan-msg{position:absolute;inset:auto 0 10px;text-align:center;color:#fff;font-size:13px;font-weight:600}
 .aovivo{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted);padding:6px 12px;background:#F4FAF6;border-bottom:1px solid #E5EFE8}
 .aovivo i{width:9px;height:9px;border-radius:50%;background:#3BB072;box-shadow:0 0 0 0 rgba(59,176,114,.6);animation:pulsa 2s infinite}
 .aovivo.off{background:#FDECEA;color:#8A1C12}
@@ -412,7 +418,7 @@ const ICONES = {
   devolucao: svgI('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
   scan: svgI('<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M11 8v8M14 8v8M17 8v8"/>')
 };
-// Leitor de código: câmera nativa no Android/Chrome; no iPhone usa a biblioteca html5-qrcode
+// Leitor de código: veja escanear() (leitor nativo no Android, ZXing no iPhone)
 const SCAN_OK = !!navigator.mediaDevices?.getUserMedia;
 
 /* ---------- utilidades ---------- */
@@ -612,37 +618,77 @@ function infoCodigo(input) {
 function carregarScript(src) {
   return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
+/* Leitor de código de barras
+   - Android/Chrome: leitor nativo do aparelho (BarcodeDetector)
+   - iPhone e outros: mesmo leitor via ZXing (vendor/barcode), carregado antes de a pessoa tocar na câmera
+   - Lê só os formatos de produto (EAN-13, EAN-8, UPC, Code 128) e analisa a faixa do meio da imagem: bem mais rápido */
+const FORMATOS_COD = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"];
+let detectorPronto = null;
+function prepararLeitor() {
+  if (detectorPronto) return detectorPronto;
+  detectorPronto = (async () => {
+    if ("BarcodeDetector" in window) {
+      try {
+        const sup = await BarcodeDetector.getSupportedFormats();
+        const f = FORMATOS_COD.filter(x => sup.includes(x));
+        if (f.includes("ean_13")) return new BarcodeDetector({ formats: f });
+      } catch (e) {}
+    }
+    if (!window.BarcodeDetectionAPI) await carregarScript("vendor/barcode/ponyfill.js");
+    const API = window.BarcodeDetectionAPI;
+    API.prepareZXingModule({ overrides: { locateFile: (path, prefix) => path.endsWith(".wasm") ? "vendor/barcode/" + path : prefix + path }, fireImmediately: true });
+    return new API.BarcodeDetector({ formats: FORMATOS_COD });
+  })();
+  detectorPronto.catch(() => { detectorPronto = null; });
+  return detectorPronto;
+}
 async function escanear(input) {
   const d = $("#dlg"); d.onclick = null;
   d.innerHTML = `<div class="dlg-box"><h3>Aponte para o código de barras</h3>
-    <div id="scanBox" style="width:100%;border-radius:10px;overflow:hidden;background:#000;min-height:220px"></div>
+    <div id="scanBox" class="scan-box"><video playsinline muted></video><div class="scan-mira"><i></i></div><div class="scan-msg">Abrindo a câmera…</div></div>
+    <p class="muted" style="font-size:13px;margin:8px 0 0;text-align:center">Deixe o código na linha vermelha, a uns 15 cm do celular.</p>
     <div class="dlg-acts" style="margin-top:10px"><button class="btn-sec" id="scanFechar">Cancelar</button></div></div>`;
   d.hidden = false;
-  let ativo = true, parar = () => {};
-  const fim = () => { ativo = false; try { parar(); } catch (e) {} d.hidden = true; d.innerHTML = ""; };
-  const lido = v => { if (!ativo) return; input.value = v; input.dispatchEvent(new Event("input", { bubbles: true })); fim(); toast("Código lido: " + v, "ok"); };
+  let ativo = true, stream = null;
+  const v = d.querySelector("video"), msg = d.querySelector(".scan-msg");
+  const fim = () => { ativo = false; try { stream?.getTracks().forEach(t => t.stop()); } catch (e) {} d.hidden = true; d.innerHTML = ""; };
+  const lido = val => {
+    if (!ativo) return; beep(); try { navigator.vibrate?.(120); } catch (e) {}
+    input.value = val; input.dispatchEvent(new Event("input", { bubbles: true })); fim(); toast("Código lido: " + val, "ok");
+  };
   $("#scanFechar").onclick = fim;
   try {
-    if ("BarcodeDetector" in window) {
-      const v = document.createElement("video"); v.setAttribute("playsinline", ""); v.muted = true; v.style.cssText = "width:100%;display:block;max-height:60vh";
-      $("#scanBox").appendChild(v);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      parar = () => stream.getTracks().forEach(t => t.stop());
-      if (!ativo) return parar();
-      v.srcObject = stream; await v.play();
-      const det = new BarcodeDetector();
-      const loop = async () => { if (!ativo) return; try { const r = await det.detect(v); if (r.length) return lido(r[0].rawValue); } catch (e) {} setTimeout(loop, 250); };
-      loop();
-    } else {
-      if (!window.__Html5QrcodeLibrary__) await carregarScript("https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js");
+    const [det, st] = await Promise.all([prepararLeitor(), navigator.mediaDevices.getUserMedia({
+      audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } })]);
+    stream = st;
+    if (!ativo) return fim();
+    const trilha = stream.getVideoTracks()[0];
+    try { await trilha.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
+    v.srcObject = stream; await v.play(); msg.textContent = "";
+    // Recorta a faixa do meio e reduz o tamanho: o leitor trabalha muito menos
+    const cv = document.createElement("canvas"), ctx = cv.getContext("2d", { willReadFrequently: true });
+    let ultimo = "", vezes = 0;
+    const ler = async () => {
       if (!ativo) return;
-      const Lib = window.__Html5QrcodeLibrary__, Fm = Lib.Html5QrcodeSupportedFormats;
-      const leitor = new Lib.Html5Qrcode("scanBox", { verbose: false, formatsToSupport: [Fm.EAN_13, Fm.EAN_8, Fm.UPC_A, Fm.UPC_E, Fm.CODE_128] });
-      parar = () => { leitor.stop().then(() => leitor.clear()).catch(() => {}); };
-      await leitor.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 260, height: 120 } }, txt => lido(txt), () => {});
-      if (!ativo) parar();
-    }
-  } catch (e) { console.error(e); fim(); toast("Não foi possível abrir a câmera. Digite o código.", "erro"); }
+      try {
+        const W = v.videoWidth, H = v.videoHeight;
+        if (W && H) {
+          const cw = Math.round(W * 0.9), ch = Math.round(H * 0.45), esc = Math.min(1, 960 / cw);
+          cv.width = Math.round(cw * esc); cv.height = Math.round(ch * esc);
+          ctx.drawImage(v, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, cv.width, cv.height);
+          const r = await det.detect(cv);
+          const val = r.find(x => /^\d{6,14}$/.test(x.rawValue))?.rawValue || r[0]?.rawValue;
+          if (val) {
+            // EAN/UPC: aceita na hora. Outros formatos: confirma em duas leituras iguais
+            if (/^\d{8}$|^\d{12,13}$/.test(val) || (val === ultimo && ++vezes >= 1)) return lido(val);
+            ultimo = val; vezes = 0;
+          }
+        }
+      } catch (e) {}
+      if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(ler); else requestAnimationFrame(ler);
+    };
+    ler();
+  } catch (e) { console.error(e); fim(); toast(e?.name === "NotAllowedError" ? "Libere a câmera para o portal nas configurações do celular." : "Não foi possível abrir a câmera. Digite o código.", "erro"); }
 }
 
 /* ---------- armazenamento do modo demonstração ---------- */
@@ -1595,7 +1641,7 @@ document.addEventListener("click", e => {
     case "mais": case "menos": {
       const inp = el.parentElement.querySelector("input"); if (inp.disabled) break;
       const n = Math.max(1, (parseInt(inp.value) || 0) + (a === "mais" ? 1 : -1)); inp.value = n; limparFalta(inp); break; }
-    case "escolherTipo": novoTipo = el.dataset.tipo; novoFotos = []; render(); window.scrollTo({ top: 0, behavior: "smooth" }); break;
+    case "escolherTipo": novoTipo = el.dataset.tipo; novoFotos = []; render(); window.scrollTo({ top: 0, behavior: "smooth" }); if (SCAN_OK) setTimeout(prepararLeitor, 300); break;
     case "voltarTipo": novoTipo = null; novoFotos = []; render(); window.scrollTo({ top: 0, behavior: "smooth" }); break;
     case "addItem": { $("#itens").insertAdjacentHTML("beforeend", itemHTML(novoTipo)); const novo = $("#itens").lastElementChild; chipify(novo); novo.scrollIntoView({ behavior: "smooth", block: "center" }); novo.querySelector("input[data-f=cod]")?.focus({ preventScroll: true }); break; }
     case "rmItem":
