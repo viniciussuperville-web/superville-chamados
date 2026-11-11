@@ -105,6 +105,21 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
+/* Pop-up de aviso (novo chamado / chamado resolvido) */
+.aviso{position:fixed;inset:0;z-index:300;background:rgba(17,17,17,.55);display:flex;align-items:center;justify-content:center;padding:18px;animation:avisoFundo .2s ease}
+.aviso[hidden]{display:none}
+.aviso-box{background:#fff;border-radius:18px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.35);animation:avisoEntra .28s cubic-bezier(.2,.9,.3,1.2)}
+.aviso-top{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 20px 16px;color:#fff;text-align:center;background:var(--c)}
+.aviso-ico{width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:32px}
+.aviso-top b{font-size:20px;font-weight:800}
+.aviso-top span{font-size:14px;opacity:.9}
+.aviso-corpo{padding:16px 20px 6px;font-size:15px;line-height:1.5;color:var(--txt)}
+.aviso-corpo .num{font-size:24px;font-weight:800;color:#111}
+.aviso-corpo .mais{margin-top:8px;font-size:13px;color:var(--muted)}
+.aviso-acoes{display:flex;flex-direction:column;gap:8px;padding:14px 20px 20px}
+.aviso-acoes button{min-height:50px;font-size:16px;width:100%}
+@keyframes avisoEntra{from{transform:translateY(24px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+@keyframes avisoFundo{from{opacity:0}to{opacity:1}}
 .sr-sel{position:absolute!important;opacity:0!important;pointer-events:none;width:1px!important;height:1px!important;padding:0!important;border:0!important}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chips.lista{flex-direction:column}
@@ -294,6 +309,7 @@ input:disabled{background:#F3F4F6;color:#8A1C12;font-weight:700}
 <main id="app"></main>
 <div id="modal" class="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 <div id="dlg" class="dlg" hidden></div>
+<div id="aviso" class="aviso" hidden><div class="aviso-box" id="avisoBox" role="alertdialog" aria-live="assertive"></div></div>
 <div id="toast"></div>
 
 <script type="module">
@@ -1417,15 +1433,57 @@ async function enviarMsg() {
   catch (e) { ta.value = txt; toast("Mensagem não enviada: " + (e.code || e.message), "erro"); }
 }
 
-/* ---------- sessão ---------- */
-function onPedidos(lista) {
-  if (isEsc() && !primeiraCarga) {
-    const novos = lista.filter(p => !conhecidos.has(p.id) && p.status === "aberto");
-    if (novos.length) {
-      beep(); if (novos.some(p => p.prioridade === "urgente")) setTimeout(beep, 250);
-      toast((novos.some(p => p.prioridade === "urgente") ? "URGENTE · " : "") + (novos.length === 1 ? `Novo chamado ${num4(novos[0].numero)} · ${TIPOS[novos[0].tipo]?.nome || ""} · ${novos[0].loja}` : `${novos.length} novos chamados na fila`), novos.some(p => p.prioridade === "urgente") ? "erro" : "ok");
-    }
+/* ---------- pop-up de aviso ---------- */
+// Escritório: avisa cada chamado novo. Loja: avisa quando um chamado aberto por esta pessoa é resolvido.
+let avisos = [];
+function mostrarAviso(av) {
+  avisos = avisos.filter(a => a.id !== av.id); avisos.push(av);
+  renderAviso();
+  beep(); if (av.urgente) setTimeout(beep, 250);
+  try { navigator.vibrate?.(av.urgente ? [200, 100, 200] : 200); } catch (e) {}
+  // Fora da tela (outra aba ou app minimizado): aviso do sistema, se o celular/computador permitir
+  try {
+    if (document.hidden && "Notification" in window && Notification.permission === "granted")
+      new Notification(av.titulo, { body: av.texto.replace(/<[^>]+>/g, ""), icon: "icone-192.png", tag: "chamado-" + av.id });
+  } catch (e) {}
+}
+function renderAviso() {
+  const box = $("#avisoBox"), fundo = $("#aviso");
+  if (!avisos.length) { fundo.hidden = true; return; }
+  const av = avisos[avisos.length - 1], resto = avisos.length - 1;
+  box.innerHTML = `<div class="aviso-top" style="--c:${av.cor}"><div class="aviso-ico">${av.icone}</div><b>${esc(av.titulo)}</b><span>${esc(av.sub)}</span></div>
+    <div class="aviso-corpo"><div class="num">${num4(av.numero)}</div>${av.texto}${resto ? `<div class="mais">+ ${resto} outro${resto > 1 ? "s" : ""} aviso${resto > 1 ? "s" : ""}</div>` : ""}</div>
+    <div class="aviso-acoes"><button class="btn" data-act="avisoAbrir" data-id="${esc(av.id)}">${av.botao}</button><button class="btn-sec" data-act="avisoFechar">${resto ? "Próximo aviso" : "OK, entendi"}</button></div>`;
+  fundo.hidden = false;
+}
+function avisosDe(lista) {
+  if (primeiraCarga) return;
+  if (isEsc()) {
+    lista.filter(p => !conhecidos.has(p.id) && p.status === "aberto").forEach(p => {
+      const urg = ehUrgente(p), t = TIPOS[p.tipo] || { nome: "" };
+      mostrarAviso({ id: p.id, numero: p.numero, urgente: urg, cor: urg ? "#D93025" : "#111111", icone: urg ? "🚨" : "🔔",
+        titulo: urg ? "Chamado URGENTE!" : "Novo chamado!", sub: `Loja ${p.loja}`,
+        texto: `<b>${esc(t.nome)}</b><br>${esc(p.solicitanteNome || "")}${p.cargo ? " · " + esc(p.cargo) : ""}${p.setor ? " · " + esc(p.setor) : ""}`,
+        botao: "Abrir chamado" });
+    });
+  } else if (ehLoja()) {
+    lista.filter(p => statusAnt.has(p.id) && statusAnt.get(p.id) !== "concluido" && p.status === "concluido" && ehMeu(p)).forEach(p => {
+      const t = TIPOS[p.tipo] || { nome: "" };
+      mostrarAviso({ id: p.id, numero: p.numero, urgente: false, cor: "#3BB072", icone: "✅",
+        titulo: "Chamado resolvido!", sub: "O escritório já entregou na loja",
+        texto: `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>.<br><span class="muted">Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</span>`,
+        botao: "Ver chamado" });
+    });
   }
+}
+// Pede permissão para avisos do sistema no primeiro toque (só funciona em alguns aparelhos)
+document.addEventListener("click", () => { try { if ("Notification" in window && Notification.permission === "default" && Store.perfil) Notification.requestPermission(); } catch (e) {} }, { once: true });
+
+/* ---------- sessão ---------- */
+let statusAnt = new Map();
+function onPedidos(lista) {
+  avisosDe(lista);
+  statusAnt = new Map(lista.map(p => [p.id, p.status]));
   conhecidos = new Set(lista.map(p => p.id)); primeiraCarga = false;
   TODOS = lista; PEDIDOS = isEsc() ? lista : lista.filter(visivelLoja);
   if (ehLoja() && !Pessoa.ler()) { montarTopo(); return; }
@@ -1436,7 +1494,7 @@ function onPedidos(lista) {
 function iniciarSessao() {
   if (!Store.perfil) { renderLogin(); return; }
   aba = isEsc() ? "fila" : "novo"; novoTipo = null; novoFotos = []; enviado = null; resetFiltros();
-  primeiraCarga = true; conhecidos = new Set();
+  primeiraCarga = true; conhecidos = new Set(); statusAnt = new Map(); avisos = []; $("#aviso").hidden = true;
   if (unsub) unsub();
   unsub = Store.observarPedidos(onPedidos);
   if (ehLoja() && (!Pessoa.ler() || (Pessoa.ler().cargo === "Gerente" && !Pessoa.ler().gerenteOk))) { renderIdentificacao(); return; }
@@ -1501,6 +1559,9 @@ document.addEventListener("click", e => {
     case "periodo": periodo = el.dataset.v; render(); break;
     case "imprimir": window.print(); break;
     case "abrir": abrirDetalhe(el.dataset.id); break;
+    case "avisoFechar": avisos.pop(); renderAviso(); break;
+    case "avisoAbrir": { const id = el.dataset.id; avisos = avisos.filter(a => a.id !== id); renderAviso();
+      if (!isEsc()) { aba = "meus"; resetFiltros(); render(); } abrirDetalhe(id); break; }
     case "fechar": fecharDetalhe(); break;
     case "verFoto": { const p = PEDIDOS.find(x => x.id === aberto); if (p) verFoto(p.fotos[+el.dataset.i]); break; }
     case "msg": enviarMsg(); break;
