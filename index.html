@@ -623,25 +623,34 @@ function carregarScript(src) {
    - iPhone e outros: mesmo leitor via ZXing (vendor/barcode), carregado antes de a pessoa tocar na câmera
    - Lê só os formatos de produto (EAN-13, EAN-8, UPC, Code 128) e analisa a faixa do meio da imagem: bem mais rápido */
 const FORMATOS_COD = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"];
-let detectorPronto = null;
-function prepararLeitor() {
-  if (detectorPronto) return detectorPronto;
-  detectorPronto = (async () => {
-    if ("BarcodeDetector" in window) {
-      try {
-        const sup = await BarcodeDetector.getSupportedFormats();
-        const f = FORMATOS_COD.filter(x => sup.includes(x));
-        if (f.includes("ean_13")) return new BarcodeDetector({ formats: f });
-      } catch (e) {}
-    }
-    if (!window.BarcodeDetectionAPI) await carregarScript("vendor/barcode/ponyfill.js");
-    const API = window.BarcodeDetectionAPI;
-    API.prepareZXingModule({ overrides: { locateFile: (path, prefix) => path.endsWith(".wasm") ? "vendor/barcode/" + path : prefix + path }, fireImmediately: true });
-    return new API.BarcodeDetector({ formats: FORMATOS_COD });
+let nativoPronto = null, zxingPronto = null;
+// Leitor do próprio aparelho (Android/Chrome). null se não existir.
+function leitorNativo() {
+  if (!nativoPronto) nativoPronto = (async () => {
+    if (!("BarcodeDetector" in window)) return null;
+    try {
+      const sup = await BarcodeDetector.getSupportedFormats();
+      const f = FORMATOS_COD.filter(x => sup.includes(x));
+      return f.includes("ean_13") ? new BarcodeDetector({ formats: f }) : null;
+    } catch (e) { return null; }
   })();
-  detectorPronto.catch(() => { detectorPronto = null; });
-  return detectorPronto;
+  return nativoPronto;
 }
+// Leitor ZXing (funciona em qualquer celular)
+function leitorZxing() {
+  if (!zxingPronto) {
+    zxingPronto = (async () => {
+      if (!window.BarcodeDetectionAPI) await carregarScript("vendor/barcode/ponyfill.js");
+      const API = window.BarcodeDetectionAPI;
+      API.prepareZXingModule({ overrides: { locateFile: (path, prefix) => path.endsWith(".wasm") ? "vendor/barcode/" + path : prefix + path }, fireImmediately: true });
+      return new API.BarcodeDetector({ formats: FORMATOS_COD });
+    })();
+    zxingPronto.catch(() => { zxingPronto = null; });
+  }
+  return zxingPronto;
+}
+// Pré-carrega os dois: no Android o nativo lê primeiro e o ZXing entra junto se o nativo não achar
+function prepararLeitor() { leitorNativo(); leitorZxing().catch(() => {}); }
 async function escanear(input) {
   const d = $("#dlg"); d.onclick = null;
   d.innerHTML = `<div class="dlg-box"><h3>Aponte para o código de barras</h3>
@@ -658,7 +667,9 @@ async function escanear(input) {
   };
   $("#scanFechar").onclick = fim;
   try {
-    const [det, st] = await Promise.all([prepararLeitor(), navigator.mediaDevices.getUserMedia({
+    prepararLeitor();
+    const nativo = await leitorNativo();
+    const [det0, st] = await Promise.all([nativo || leitorZxing(), navigator.mediaDevices.getUserMedia({
       audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } })]);
     stream = st;
     if (!ativo) return fim();
@@ -667,7 +678,9 @@ async function escanear(input) {
     v.srcObject = stream; await v.play(); msg.textContent = "";
     // Recorta a faixa do meio e reduz o tamanho: o leitor trabalha muito menos
     const cv = document.createElement("canvas"), ctx = cv.getContext("2d", { willReadFrequently: true });
-    let ultimo = "", vezes = 0;
+    let ultimo = "", vezes = 0, quadro = 0, zx = nativo ? null : det0;
+    // No Android: se o leitor nativo não achar nada em 1,2 s, o ZXing passa a ajudar (quadros alternados)
+    if (nativo) setTimeout(() => leitorZxing().then(z => { zx = z; }).catch(() => {}), 1200);
     const ler = async () => {
       if (!ativo) return;
       try {
@@ -676,6 +689,7 @@ async function escanear(input) {
           const cw = Math.round(W * 0.9), ch = Math.round(H * 0.45), esc = Math.min(1, 960 / cw);
           cv.width = Math.round(cw * esc); cv.height = Math.round(ch * esc);
           ctx.drawImage(v, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, cv.width, cv.height);
+          const det = nativo && zx ? (quadro++ % 2 ? zx : nativo) : (nativo || zx);
           const r = await det.detect(cv);
           const val = r.find(x => /^\d{6,14}$/.test(x.rawValue))?.rawValue || r[0]?.rawValue;
           if (val) {
