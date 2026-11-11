@@ -105,6 +105,11 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
+.filtros-esc{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 10px;margin:4px 0 8px}
+.filtros-esc label{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin:0}
+.filtros-esc select{margin-top:3px;width:100%}
+.filtro-ativo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#FFF8E1;border:1px solid #F2D27A;border-radius:10px;padding:8px 12px;margin:2px 0 10px;font-size:13px}
+.filtro-ativo .btn-link{margin:0}
 .scan-box{position:relative;width:100%;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:4/3}
 .scan-box video{width:100%;height:100%;object-fit:cover;display:block}
 .scan-mira{position:absolute;left:5%;right:5%;top:27.5%;bottom:27.5%;border:3px solid rgba(255,255,255,.9);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
@@ -114,6 +119,8 @@ label[hidden]{display:none!important}
 .aovivo{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted);padding:6px 12px;background:#F4FAF6;border-bottom:1px solid #E5EFE8}
 .aovivo i{width:9px;height:9px;border-radius:50%;background:#3BB072;box-shadow:0 0 0 0 rgba(59,176,114,.6);animation:pulsa 2s infinite}
 .aovivo.off{background:#FDECEA;color:#8A1C12}
+.aovivo i{flex:none}
+@media(max-width:480px){.aovivo .av-ext{display:none}}
 .aovivo i.off{background:#D93025;animation:none}
 @keyframes pulsa{0%{box-shadow:0 0 0 0 rgba(59,176,114,.55)}70%{box-shadow:0 0 0 7px rgba(59,176,114,0)}100%{box-shadow:0 0 0 0 rgba(59,176,114,0)}}
 .nova-versao{display:block;width:100%;border:0;background:#111;color:#fff;font:inherit;font-size:13px;font-weight:700;padding:10px 14px;cursor:pointer}
@@ -833,7 +840,7 @@ const Store = {
 /* ---------- estado da tela ---------- */
 let TODOS = [], PEDIDOS = [], aba = "novo", filtros, enviado = null, novoTipo = null, novoFotos = [], aberto = null, periodo = "7";
 let unsub = null, conhecidos = new Set(), primeiraCarga = true;
-const resetFiltros = () => filtros = { status: "todos", tipo: "todos", loja: "todas", busca: "", meus: false, atrasados: false };
+const resetFiltros = () => filtros = { status: "todos", tipo: "todos", loja: "todas", solic: "todos", setor: "todos", resp: "todos", busca: "", meus: false, atrasados: false };
 resetFiltros();
 const cnt = s => PEDIDOS.filter(p => p.status === s).length;
 
@@ -881,8 +888,8 @@ let ultimaSync = Date.now(), versaoNova = false, wakeLock = null;
 const hhmmss = t => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 function aoVivoHTML() {
   return navigator.onLine
-    ? `<i></i><b>Ao vivo</b> · chamados atualizam sozinhos · última mudança às ${hhmmss(ultimaSync).slice(0, 5)}`
-    : `<i class="off"></i><b>Sem internet</b> · os chamados voltam a atualizar quando a conexão voltar`;
+    ? `<i></i><span><b>Ao vivo</b><span class="av-ext"> · chamados atualizam sozinhos</span> · última mudança às ${hhmmss(ultimaSync).slice(0, 5)}</span>`
+    : `<i class="off"></i><span><b>Sem internet</b> · os chamados voltam quando a conexão voltar</span>`;
 }
 function atualizarAoVivo() { const el = $("#aovivo"); if (el) { el.innerHTML = aoVivoHTML(); el.classList.toggle("off", !navigator.onLine); } }
 const telaLivre = () => $("#modal").hidden && $("#dlg").hidden && !(aba === "novo" && novoTipo) && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "");
@@ -1237,6 +1244,9 @@ function filtrar() {
   else if (f.status !== "todos") l = l.filter(p => p.status === f.status);
   if (f.tipo !== "todos") l = l.filter(p => p.tipo === f.tipo);
   if (f.loja !== "todas") l = l.filter(p => p.loja === f.loja);
+  if (f.solic !== "todos") l = l.filter(p => normNome(p.solicitanteNome) === f.solic);
+  if (f.setor !== "todos") l = l.filter(p => p.setor === f.setor);
+  if (f.resp !== "todos") l = l.filter(p => f.resp === "ninguem" ? !p.responsavelNome : p.responsavelNome === f.resp);
   if (f.meus) l = l.filter(p => isEsc() ? p.responsavelUid === Store.perfil.uid : ehMeu(p));
   if (f.atrasados) l = l.filter(atrasado);
   const q = f.busca.toLowerCase().trim(); if (q) l = l.filter(p => textoBusca(p).includes(q));
@@ -1291,6 +1301,29 @@ function vMeus() {
     <div id="lista">${listaHTML()}</div>`;
 }
 
+// Filtros do escritório: tipo, quem pediu, setor, com quem está e loja
+function filtrosEscHTML() {
+  const f = filtros, sel = (k, v) => f[k] === v ? "selected" : "";
+  const pessoas = {}; PEDIDOS.forEach(p => { const k = normNome(p.solicitanteNome); if (k && !pessoas[k]) pessoas[k] = { nome: p.solicitanteNome, cargo: p.cargo }; });
+  const listaP = Object.entries(pessoas).sort((a, b) => a[1].nome.localeCompare(b[1].nome, "pt-BR"));
+  const setores = [...new Set([...SETORES, ...PEDIDOS.map(p => p.setor).filter(Boolean)])];
+  const resps = [...new Set(PEDIDOS.map(p => p.responsavelNome).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const ativos = ["tipo", "solic", "setor", "resp", "loja"].filter(k => !["todos", "todas"].includes(f[k])).length + (f.busca ? 1 : 0) + (f.meus ? 1 : 0);
+  const n = filtrar().length;
+  return `<div class="filtros-esc">
+      <label>Tipo de chamado<select data-f="tipo"><option value="todos">Todos os tipos</option>${Object.entries(TIPOS).map(([k, t]) => `<option value="${k}" ${sel("tipo", k)}>${t.nome}</option>`).join("")}</select></label>
+      <label>Quem pediu<select data-f="solic"><option value="todos">Todas as pessoas</option>${listaP.map(([k, p]) => `<option value="${esc(k)}" ${sel("solic", k)}>${esc(p.nome)}${p.cargo ? " · " + esc(p.cargo) : ""}</option>`).join("")}</select></label>
+      <label>Setor<select data-f="setor"><option value="todos">Todos os setores</option>${setores.map(x => `<option ${sel("setor", x)}>${esc(x)}</option>`).join("")}</select></label>
+      <label>Com quem está<select data-f="resp"><option value="todos">Todos</option><option value="ninguem" ${sel("resp", "ninguem")}>Ninguém assumiu</option>${resps.map(x => `<option ${sel("resp", x)}>${esc(x)}</option>`).join("")}</select></label>
+      ${LOJAS.length > 1 ? `<label>Loja<select data-f="loja"><option value="todas">Todas as lojas</option>${LOJAS.map(l => `<option ${sel("loja", l)}>${esc(l)}</option>`).join("")}</select></label>` : ""}
+    </div>
+    <div class="filtros">
+      <input type="search" data-f="busca" placeholder="Buscar nº, código, produto, NF, fornecedor…" value="${esc(f.busca)}">
+      <label class="check"><input type="checkbox" data-f="meus" ${f.meus ? "checked" : ""}> Só os que eu assumi</label>
+    </div>
+    ${ativos ? `<div class="filtro-ativo"><span><b>${n}</b> chamado${n === 1 ? "" : "s"} com ${ativos} filtro${ativos > 1 ? "s" : ""}</span><button class="btn-link" data-act="limparFiltros">Limpar filtros</button></div>` : ""}`;
+}
+
 function vFila() {
   const atr = PEDIDOS.filter(atrasado).length;
   const urg = PEDIDOS.filter(p => p.status === "aberto" && ehUrgente(p));
@@ -1304,12 +1337,7 @@ function vFila() {
       ${kpi("atr", atr, "#D93025", "Viraram urgentes (fora do prazo)")}
     </div>
     <div class="filtros">${chipsStatus()}</div>
-    <div class="filtros">
-      <select data-f="tipo"><option value="todos">Todos os tipos</option>${Object.entries(TIPOS).map(([k, t]) => `<option value="${k}" ${filtros.tipo === k ? "selected" : ""}>${t.nome}</option>`).join("")}</select>
-      ${LOJAS.length > 1 ? `<select data-f="loja"><option value="todas">Todas as lojas</option>${LOJAS.map(l => `<option ${filtros.loja === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>` : ""}
-      <input type="search" data-f="busca" placeholder="Buscar nº, código, produto, NF, fornecedor…" value="${esc(filtros.busca)}">
-      <label class="check"><input type="checkbox" data-f="meus" ${filtros.meus ? "checked" : ""}> Só os que eu assumi</label>
-    </div>
+    ${filtrosEscHTML()}
     <div id="lista">${listaHTML()}</div>`;
 }
 
@@ -1674,6 +1702,7 @@ document.addEventListener("click", e => {
     case "imprimir": window.print(); break;
     case "abrir": abrirDetalhe(el.dataset.id); break;
     case "recarregar": location.reload(); break;
+    case "limparFiltros": resetFiltros(); render(); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": { const id = el.dataset.id; avisos = avisos.filter(a => a.id !== id); renderAviso();
       if (!isEsc()) { aba = "meus"; resetFiltros(); render(); } abrirDetalhe(id); break; }
@@ -1691,7 +1720,7 @@ document.addEventListener("change", e => {
   }
   if (e.target.name === "balanca" || e.target.dataset?.f === "todasBal") e.target.closest(".balancas")?.classList.remove("falta");
   const f = e.target.dataset?.f;
-  if (f === "tipo" || f === "loja") { filtros[f] = e.target.value; render(); }
+  if (["tipo", "loja", "solic", "setor", "resp"].includes(f)) { filtros[f] = e.target.value; render(); }
   else if (f === "fazPlaca") {
     const item = e.target.closest(".item"), on = e.target.checked, box = item.querySelector(".placa-extra");
     box.hidden = !on; box.querySelectorAll("select,input").forEach(i => { i.disabled = !on; i.required = on; });
