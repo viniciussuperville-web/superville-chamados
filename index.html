@@ -105,6 +105,9 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
+.busca-nome{margin:6px 0}
+.busca-nome input{margin:0 0 6px}
+.res-nome{display:flex;flex-direction:column;gap:6px}
 .campo-sinal{display:flex;gap:6px;align-items:stretch;margin-top:5px}
 .campo-sinal input{flex:1;min-width:0;margin:0}
 .btn-sinal{flex:none;width:52px;border:2px solid #D1D5DB;border-radius:10px;background:#fff;font:inherit;font-size:16px;font-weight:800;color:var(--txt);cursor:pointer}
@@ -357,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.13-2";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.13-3";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -564,6 +567,7 @@ const DEMO_CSV = `codigo;ean;descricao;secao
 80450-3;789605113001-7;ACEM BOVINO KG;ACOUGUE
 29254-2;;PERFLEX;REMESSA MATERIAL PROMOCIONAL
 2925-4;789000000292-5;PRODUTO EXEMPLO AMBIGUO;MERCEARIA`;
+const semAcento = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const Produtos = {
   mapa: new Map(), carregado: false, total: 0, exemplo: false,
   norm: c => String(c || "").replace(/\D/g, "").replace(/^0+/, ""),
@@ -571,6 +575,21 @@ const Produtos = {
     try { const r = await fetch(BASE_PRODUTOS, { cache: "no-cache" }); if (!r.ok) throw new Error(r.status); this.indexar(await r.text()); }
     catch (e) { if (Store.modo === "demo") { this.indexar(DEMO_CSV); this.exemplo = true; } }
     try { const r = await fetch(BASE_EXTRAS, { cache: "no-cache" }); if (r.ok) this.indexarExtras(await r.text()); } catch (e) {}
+    // códigos que este celular já ligou a um produto pela busca por nome
+    try { Object.entries(JSON.parse(localStorage.getItem("cs_ean_extras") || "{}")).forEach(([ean, cod]) => { const p = this.porCodigo(cod); if (p) this._add(ean, p); }); } catch (e) {}
+  },
+  porCodigo(cod) { const k = this.norm(cod); return (this.mapa.get(k) || []).find(x => this.norm(x.codigo) === k) || null; },
+  // Busca pelo nome: todas as palavras precisam aparecer na descrição
+  buscarNome(q) {
+    const pal = semAcento(q).split(/\s+/).filter(w => w.length >= 2);
+    if (!pal.length || pal.join("").length < 3) return [];
+    const r = []; for (const p of this.todos || []) { if (pal.every(w => p.busca.includes(w))) { r.push(p); if (r.length >= 8) break; } }
+    return r;
+  },
+  lembrar(ean, cod) {
+    const p = this.porCodigo(cod); if (!p || !this.norm(ean)) return;
+    this._add(ean, p);
+    try { const m = JSON.parse(localStorage.getItem("cs_ean_extras") || "{}"); m[this.norm(ean)] = p.codigo; localStorage.setItem("cs_ean_extras", JSON.stringify(m)); } catch (e) {}
   },
   // Cada linha liga um código de barras a mais ao produto pelo código interno (PLU)
   indexarExtras(txt) {
@@ -595,11 +614,12 @@ const Produtos = {
     const iDesc = cab.findIndex(c => /desc|produto|nome/.test(c));
     const iSec = cab.findIndex(c => /secao|setor|depto/.test(c));
     if (iDesc < 0 || (iEan < 0 && iCod < 0)) { console.warn("produtos.csv: cabeçalho não reconhecido", cab); return; }
-    this.mapa.clear(); this.total = 0;
+    this.mapa.clear(); this.total = 0; this.todos = [];
     for (const l of linhas.slice(1)) {
       const c = l.split(sep).map(limpa);
       const p = { codigo: iCod >= 0 ? c[iCod] : "", ean: iEan >= 0 ? c[iEan] : "", descricao: c[iDesc] || "", secao: iSec >= 0 ? c[iSec] : "" };
       if (!p.descricao) continue;
+      p.busca = semAcento(p.descricao + " " + p.codigo); this.todos.push(p);
       this._add(p.codigo, p);                                              // PLU com dígito (29254-2 → 292542)
       if (/-\d$/.test(p.codigo)) this._add(p.codigo.replace(/-\d$/, ""), p); // PLU sem dígito (29254)
       this._add(p.ean, p);                                                 // código de barras
@@ -637,7 +657,9 @@ function infoCodigo(input) {
     input.dataset.ambig = "1";
     box.innerHTML = `<span class="ci-warn">Mais de um produto com esse número. Toque no certo:</span>
       <div class="escolhas">${l.map(p => `<button type="button" class="escolha" data-act="escolherProd" data-cod="${esc(p.codigo)}"><b>${esc(p.codigo)}</b> ${esc(p.descricao)}</button>`).join("")}</div>`;
-  } else box.innerHTML = `<span class="ci-warn">Não achei esse código na lista do portal. Confira o número ou tente o <b>código interno</b> do produto. Se o produto existe, pode abrir o chamado assim mesmo: o escritório confere pelo código.</span>`;
+  } else box.innerHTML = `<span class="ci-warn">Não achei esse código na lista do portal. Procure o produto pelo nome:</span>
+      <div class="busca-nome"><input type="search" data-f="buscaNome" placeholder="Ex.: hofbrau weiss" autocomplete="off"><div class="res-nome"></div></div>
+      <span class="ci-muted">Não achou? Pode abrir o chamado assim mesmo: o escritório confere pelo código.</span>`;
 }
 
 function carregarScript(src) {
@@ -1421,23 +1443,23 @@ function blocoDados(p) {
   const dl = arr => `<dl class="info">${arr.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v || "—")}</dd></div>`).join("")}</dl>`;
   const tabQtd = rot => `<div class="sec-tit">${rot} · ${it.length}</div><div class="tab-wrap"><table>
     <thead><tr><th>Código</th><th>Descrição</th><th>Quantidade</th></tr></thead>
-    <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}</td><td><b>${esc(i.qtd)}</b></td></tr>`).join("")}</tbody></table></div>`;
+    <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}${i.eanLido ? `<br><small class="muted">código lido na loja: ${esc(i.eanLido)}</small>` : ""}</td><td><b>${esc(i.qtd)}</b></td></tr>`).join("")}</tbody></table></div>`;
   if (p.tipo === "placa") return `<div class="sec-tit">Placas · ${it.length} produto(s) · ${totalPlacas(p)} placa(s)</div><div class="tab-wrap"><table>
       <thead><tr><th>Código</th><th>Descrição</th><th>Modelo</th><th>Tamanho</th><th>Qtd</th></tr></thead>
-      <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}</td><td>${esc(i.modelo)}</td><td>${esc(i.tamanho)}</td><td><b>${esc(i.qtd)}</b></td></tr>`).join("")}</tbody></table></div>`;
+      <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}${i.eanLido ? `<br><small class="muted">código lido na loja: ${esc(i.eanLido)}</small>` : ""}</td><td>${esc(i.modelo)}</td><td>${esc(i.tamanho)}</td><td><b>${esc(i.qtd)}</b></td></tr>`).join("")}</tbody></table></div>`;
   if (p.tipo === "caixa") { const n = totalPlacas(p); return `<div class="sec-tit">Carga para os caixas · ${it.length} produto(s)${n ? ` · ${n} placa(s)` : ""}</div><div class="tab-wrap"><table>
       <thead><tr><th>Código</th><th>Descrição</th><th>Motivo</th><th>Placa</th></tr></thead>
-      <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}</td><td>${esc(i.motivo)}</td>
+      <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}${i.eanLido ? `<br><small class="muted">código lido na loja: ${esc(i.eanLido)}</small>` : ""}</td><td>${esc(i.motivo)}</td>
         <td>${i.placa ? `<b>Sim</b> · ${esc(i.modelo)} · ${esc(i.tamanho)} · ${esc(i.qtdPlaca)} un.` : "Não"}</td></tr>`).join("")}</tbody></table></div>`; }
   if (p.tipo === "ajuste") return `<div class="sec-tit">Ajuste de estoque · ${it.length} produto(s)</div><div class="tab-wrap"><table>
       <thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Motivo</th></tr></thead>
-      <tbody>${it.map(i => { const d = difAjuste(i); return `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}</td>
+      <tbody>${it.map(i => { const d = difAjuste(i); return `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}${i.eanLido ? `<br><small class="muted">código lido na loja: ${esc(i.eanLido)}</small>` : ""}</td>
         <td>${esc(i.sistema)}</td><td>${esc(i.fisico)}</td><td class="${d < 0 ? "dif-neg" : "dif-pos"}"><b>${d > 0 ? "+" : ""}${fmtQtd(d)}</b></td><td>${esc(i.motivo)}</td></tr>`; }).join("")}</tbody></table></div>
       <p class="dica">Diferença = físico − sistema. Negativo: falta produto na loja (o sistema tem mais). Positivo: sobra (o sistema tem menos).</p>`;
   if (p.tipo === "balanca") return `<div class="sec-tit">Carga para balança</div>${dl([["Balança(s)", (d.balancas || []).map(b => "Nº " + b).join(", ")]])}
       <div class="sec-tit">Produtos que não estão entrando · ${it.length}</div><div class="tab-wrap"><table>
       <thead><tr><th>Código</th><th>Descrição</th><th>Problema</th></tr></thead>
-      <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}</td><td>${esc(i.problema)}</td></tr>`).join("")}</tbody></table></div>`;
+      <tbody>${it.map(i => `<tr><td>${esc(i.plu || i.codigo)}</td><td>${esc(i.descricao || "— não encontrado na base")}${i.eanLido ? `<br><small class="muted">código lido na loja: ${esc(i.eanLido)}</small>` : ""}</td><td>${esc(i.problema)}</td></tr>`).join("")}</tbody></table></div>`;
   if (p.tipo === "cadastro") return `<div class="sec-tit">Produto para cadastrar</div>${dl([["Código de barras", d.ean], ["Descrição do rótulo", d.descricao], ["Marca / fornecedor", d.fornecedor]])}`;
   if (p.tipo === "nfe") return `<div class="sec-tit">Nota fiscal a emitir</div>${dl([["Destinatário", d.destinatario]])}${tabQtd("Itens da nota")}`;
   if (p.tipo === "devolucao") return `<div class="sec-tit">Devolução ao fornecedor</div>${dl([["Tipo de devolução", d.tipoDevolucao], ["Fornecedor", d.fornecedor], ["NF de origem", d.nfOrigem]])}${tabQtd("Produtos a devolver")}`;
@@ -1708,6 +1730,14 @@ document.addEventListener("click", e => {
       if (document.querySelectorAll("#itens .item").length > 1) el.closest(".item").remove();
       else toast("O chamado precisa de pelo menos um produto."); break;
     case "escolherProd": { const inp = el.closest(".item").querySelector("input[data-f=cod]"); inp.value = el.dataset.cod; infoCodigo(inp); break; }
+    case "escolherNome": {
+      const item = el.closest(".item"), inp = item.querySelector("input[data-f=cod]"), lido = inp.value.trim();
+      // guarda o código de barras que a loja leu: o escritório vê e ele passa a ser reconhecido neste celular
+      let h = item.querySelector("input[name=eanLido]"); if (!h) { h = document.createElement("input"); h.type = "hidden"; h.name = "eanLido"; item.appendChild(h); }
+      h.value = lido; Produtos.lembrar(lido, el.dataset.cod);
+      inp.value = el.dataset.cod; infoCodigo(inp);
+      item.querySelector(".cod-info").insertAdjacentHTML("beforeend", `<div class="ci-muted">Código ${esc(lido)} ligado a este produto.</div>`);
+      break; }
     case "scan": escanear(el.closest(".cod-in").querySelector("input")); break;
     case "rmFoto": novoFotos.splice(+el.dataset.i, 1); renderFotos(); break;
     case "chip": filtros.status = el.dataset.v; filtros.atrasados = false; render(); $("#lista")?.scrollIntoView({ behavior: "smooth", block: "start" }); break;
@@ -1765,7 +1795,14 @@ document.addEventListener("change", e => {
 const limparFalta = el => { const f = el?.closest?.(".falta"); if (f) { f.classList.remove("falta"); $("#toast")?.classList.remove("show"); } };
 document.addEventListener("input", e => {
   limparFalta(e.target);
-  if (e.target.dataset?.f === "cod") { infoCodigo(e.target); return; }
+  if (e.target.dataset?.f === "cod") { const h = e.target.closest(".item")?.querySelector("input[name=eanLido]"); if (h) h.value = ""; infoCodigo(e.target); return; }
+  if (e.target.dataset?.f === "buscaNome") {
+    const l = Produtos.buscarNome(e.target.value), box = e.target.nextElementSibling;
+    box.innerHTML = !e.target.value.trim() ? "" : l.length
+      ? l.map(p => `<button type="button" class="escolha" data-act="escolherNome" data-cod="${esc(p.codigo)}"><b>${esc(p.codigo)}</b> ${esc(p.descricao)}</button>`).join("")
+      : `<span class="ci-muted">Nenhum produto com esse nome.</span>`;
+    return;
+  }
   if (e.target.name === "sistema") e.target.parentElement.querySelector(".btn-sinal")?.classList.toggle("neg", e.target.value.trim().startsWith("-"));
   if (e.target.dataset?.f === "qtdAjuste") {
     const item = e.target.closest(".item"), s = numero(item.querySelector("[name=sistema]").value), fi = numero(item.querySelector("[name=fisico]").value), box = item.querySelector(".dif");
