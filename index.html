@@ -105,6 +105,11 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
+.campo-sinal{display:flex;gap:6px;align-items:stretch;margin-top:5px}
+.campo-sinal input{flex:1;min-width:0;margin:0}
+.btn-sinal{flex:none;width:52px;border:2px solid #D1D5DB;border-radius:10px;background:#fff;font:inherit;font-size:16px;font-weight:800;color:var(--txt);cursor:pointer}
+.btn-sinal.neg{border-color:var(--vermelho);background:#FDECEA;color:#8A1C12}
+.dica-sinal{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:4px;text-transform:none}
 .filtros-esc{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 10px;margin:4px 0 8px}
 .filtros-esc label{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin:0}
 .filtros-esc select{margin-top:3px;width:100%}
@@ -352,7 +357,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "teste-nova";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.13-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -1078,7 +1083,7 @@ function itemHTML(tipo) {
     </div></div>`;
   if (tipo === "ajuste") return `<div class="item">${topo}${campoCodigo()}<input type="hidden" name="descricao">
     <div class="grid2">
-      <label>Estoque no sistema<input name="sistema" required inputmode="decimal" data-f="qtdAjuste" placeholder="Ex.: 24"></label>
+      <label>Estoque no sistema<div class="campo-sinal"><button type="button" class="btn-sinal" data-act="sinal" aria-label="Trocar entre positivo e negativo">+/−</button><input name="sistema" required inputmode="decimal" data-f="qtdAjuste" placeholder="Ex.: 24 ou -5"></div><small class="dica-sinal">Negativo no sistema? Toque em <b>+/−</b></small></label>
       <label>Quantidade física (contada)<input name="fisico" required inputmode="decimal" data-f="qtdAjuste" placeholder="Ex.: 18"></label>
     </div>
     <div class="dif"></div>
@@ -1702,6 +1707,11 @@ document.addEventListener("click", e => {
     case "imprimir": window.print(); break;
     case "abrir": abrirDetalhe(el.dataset.id); break;
     case "recarregar": location.reload(); break;
+    case "sinal": {
+      const inp = el.parentElement.querySelector("input"); let v = inp.value.trim();
+      v = v.startsWith("-") ? v.slice(1) : "-" + v; inp.value = v;
+      el.classList.toggle("neg", v.startsWith("-"));
+      inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus(); break; }
     case "limparFiltros": resetFiltros(); render(); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": { const id = el.dataset.id; avisos = avisos.filter(a => a.id !== id); renderAviso();
@@ -1743,6 +1753,7 @@ const limparFalta = el => { const f = el?.closest?.(".falta"); if (f) { f.classL
 document.addEventListener("input", e => {
   limparFalta(e.target);
   if (e.target.dataset?.f === "cod") { infoCodigo(e.target); return; }
+  if (e.target.name === "sistema") e.target.parentElement.querySelector(".btn-sinal")?.classList.toggle("neg", e.target.value.trim().startsWith("-"));
   if (e.target.dataset?.f === "qtdAjuste") {
     const item = e.target.closest(".item"), s = numero(item.querySelector("[name=sistema]").value), fi = numero(item.querySelector("[name=fisico]").value), box = item.querySelector(".dif");
     if (isNaN(s) || isNaN(fi)) { box.innerHTML = ""; return; }
