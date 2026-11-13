@@ -357,13 +357,14 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.13-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.13-2";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
 
 const LOJAS_REDE = ["Vila Romana", "Vila Leopoldina", "Santo Amaro", "Pio XI"]; // sugestões de destinatário da NF
 const BASE_PRODUTOS = "produtos.csv";                  // base de produtos (código interno, código de barras, descrição) na mesma pasta
+const BASE_EXTRAS = "codigos-extras.csv";             // códigos de barras adicionais de um mesmo produto (codigo;ean), ex.: importado e nacional
 
 // Tipos de chamado. sla = prazo do escritório em horas (normal: 2h, sempre até o fechamento da loja). imediato = sempre urgente.
 const TIPOS = {
@@ -569,6 +570,18 @@ const Produtos = {
   async carregar() {
     try { const r = await fetch(BASE_PRODUTOS, { cache: "no-cache" }); if (!r.ok) throw new Error(r.status); this.indexar(await r.text()); }
     catch (e) { if (Store.modo === "demo") { this.indexar(DEMO_CSV); this.exemplo = true; } }
+    try { const r = await fetch(BASE_EXTRAS, { cache: "no-cache" }); if (r.ok) this.indexarExtras(await r.text()); } catch (e) {}
+  },
+  // Cada linha liga um código de barras a mais ao produto pelo código interno (PLU)
+  indexarExtras(txt) {
+    const linhas = txt.replace(/^\uFEFF/, "").split(/\r?\n/).filter(l => l.trim()).slice(1);
+    let n = 0;
+    for (const l of linhas) {
+      const [cod, ean] = l.split(";").map(x => String(x || "").trim());
+      const k = this.norm(cod), p = (this.mapa.get(k) || []).find(x => this.norm(x.codigo) === k);
+      if (p && this.norm(ean)) { this._add(ean, p); n++; }
+    }
+    this.extras = n;
   },
   _add(k, p) { const n = this.norm(k); if (!n) return; const l = this.mapa.get(n); if (!l) this.mapa.set(n, [p]); else if (!l.includes(p)) l.push(p); },
   indexar(txt) {
@@ -624,7 +637,7 @@ function infoCodigo(input) {
     input.dataset.ambig = "1";
     box.innerHTML = `<span class="ci-warn">Mais de um produto com esse número. Toque no certo:</span>
       <div class="escolhas">${l.map(p => `<button type="button" class="escolha" data-act="escolherProd" data-cod="${esc(p.codigo)}"><b>${esc(p.codigo)}</b> ${esc(p.descricao)}</button>`).join("")}</div>`;
-  } else box.innerHTML = `<span class="ci-warn">Código não encontrado na base. Confira o número${novoTipo === "placa" ? " ou abra um chamado de <b>Produto sem cadastro</b>" : ""}.</span>`;
+  } else box.innerHTML = `<span class="ci-warn">Não achei esse código na lista do portal. Confira o número ou tente o <b>código interno</b> do produto. Se o produto existe, pode abrir o chamado assim mesmo: o escritório confere pelo código.</span>`;
 }
 
 function carregarScript(src) {
