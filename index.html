@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.13-3";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.17-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -391,7 +391,7 @@ async function senhaGerenteOk(txt) {
   const h = await crypto.subtle.digest("SHA-256", dados);
   return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("") === SENHA_GERENTE_SHA256;
 }
-const SETORES = ["Mercearia", "Açougue", "Hortifruti", "Padaria", "Frios e Laticínios", "Bebidas", "Limpeza e Higiene", "Frente de caixa", "Depósito", "Outro"];
+const SETORES = ["Mercearia", "Açougue", "Hortifruti", "Padaria", "Frios e Laticínios", "Bebidas", "Limpeza e Higiene", "Frente de caixa", "Depósito", "Pães e Bolos", "Cereais (Potinhos)", "Outro"];
 const MODELOS = ["Oferta", "Clube Fidelidade", "Cashback"];
 const TAMANHOS = [["A4", "A4 (1 por folha)"], ["A5", "A5 (2 por folha)"], ["A6", "A6 (4 por folha)"]];
 // Balanças de cada loja, com a mesma numeração do sistema de carga (tela "Solicitar Carga das Balanças").
@@ -1342,6 +1342,12 @@ function vMeus() {
 }
 
 // Filtros do escritório: tipo, quem pediu, setor, com quem está e loja
+function avisoSistemaHTML() {
+  if (!("Notification" in window)) return "";
+  if (Notification.permission === "default") return `<div class="banner neutro" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>🔔 Receba o pop-up de chamado novo mesmo com o portal minimizado ou atrás de outra janela.</span><button class="btn" data-act="ativarAvisos" style="flex:none">Ativar avisos</button></div>`;
+  if (Notification.permission === "denied") return `<div class="banner neutro">🔕 Os avisos do computador estão bloqueados. Para liberar: clique no <b>cadeado</b> ao lado do endereço do site › <b>Notificações</b> › <b>Permitir</b>, e recarregue a página.</div>`;
+  return "";
+}
 function filtrosEscHTML() {
   const f = filtros, sel = (k, v) => f[k] === v ? "selected" : "";
   const pessoas = {}; PEDIDOS.forEach(p => { const k = normNome(p.solicitanteNome); if (k && !pessoas[k]) pessoas[k] = { nome: p.solicitanteNome, cargo: p.cargo }; });
@@ -1371,6 +1377,7 @@ function vFila() {
   return `${urg.length ? `<button class="alerta-urg" data-act="abrir" data-id="${esc(urg.sort((a, b) => a.criadoEm - b.criadoEm)[0].id)}">
       <b>${urg.length} chamado${urg.length > 1 ? "s" : ""} URGENTE${urg.length > 1 ? "S" : ""} sem responsável</b>
       <span>${urg.map(p => num4(p.numero) + " · " + esc(TIPOS[p.tipo]?.curto || "") + " · " + desde(p.criadoEm)).join("  |  ")} — toque para abrir</span></button>` : ""}
+    ${avisoSistemaHTML()}
     ${farolHTML()}
     <div class="kpis">
       ${kpi("meus", PEDIDOS.filter(p => p.status === "andamento" && ehResponsavel(p)).length, "#111111", "Comigo — eu assumi")}
@@ -1623,15 +1630,27 @@ function mostrarAviso(av) {
   try { navigator.vibrate?.(av.urgente ? [200, 100, 200] : 200); } catch (e) {}
   // Fora da tela (outra aba ou app minimizado): aviso do sistema, se o celular/computador permitir
   try {
-    if (document.hidden && "Notification" in window && Notification.permission === "granted")
-      new Notification(av.titulo, { body: av.texto.replace(/<[^>]+>/g, ""), icon: "icone-192.png", tag: "chamado-" + av.id });
+    // portal em outra aba, minimizado ou atrás de outra janela: pop-up do sistema; o clique abre o chamado
+    if ((document.hidden || !document.hasFocus()) && "Notification" in window && Notification.permission === "granted") {
+      const n = new Notification(`${av.titulo} ${num4(av.numero)}`, {
+        body: av.texto.replace(/<br>/g, "\n").replace(/<[^>]+>/g, ""), icon: "icone-192.png", tag: "chamado-" + av.id,
+        requireInteraction: isEsc(), renotify: true });
+      n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); abrirDoAviso(av.id); };
+    }
   } catch (e) {}
+}
+// Abre o chamado a partir do pop-up (do portal ou do sistema)
+function abrirDoAviso(id) {
+  avisos = avisos.filter(a => a.id !== id); renderAviso();
+  if (!isEsc()) { aba = "meus"; resetFiltros(); render(); }
+  else if (aba !== "fila") { aba = "fila"; render(); }
+  abrirDetalhe(id);
 }
 function renderAviso() {
   const box = $("#avisoBox"), fundo = $("#aviso");
   if (!avisos.length) { fundo.hidden = true; return; }
   const av = avisos[avisos.length - 1], resto = avisos.length - 1;
-  box.innerHTML = `<div class="aviso-top" style="--c:${av.cor}"><div class="aviso-ico">${av.icone}</div><b>${esc(av.titulo)}</b><span>${esc(av.sub)}</span></div>
+  box.innerHTML = `<div class="aviso-top" style="--c:${av.cor};cursor:pointer" data-act="avisoAbrir" data-id="${esc(av.id)}"><div class="aviso-ico">${av.icone}</div><b>${esc(av.titulo)}</b><span>${esc(av.sub)}</span></div>
     <div class="aviso-corpo"><div class="num">${num4(av.numero)}</div>${av.texto}${resto ? `<div class="mais">+ ${resto} outro${resto > 1 ? "s" : ""} aviso${resto > 1 ? "s" : ""}</div>` : ""}</div>
     <div class="aviso-acoes"><button class="btn" data-act="avisoAbrir" data-id="${esc(av.id)}">${av.botao}</button><button class="btn-sec" data-act="avisoFechar">${resto ? "Próximo aviso" : "OK, entendi"}</button></div>`;
   fundo.hidden = false;
@@ -1657,7 +1676,7 @@ function avisosDe(lista) {
   }
 }
 // Pede permissão para avisos do sistema no primeiro toque (só funciona em alguns aparelhos)
-document.addEventListener("click", () => { try { if ("Notification" in window && Notification.permission === "default" && Store.perfil) Notification.requestPermission(); } catch (e) {} }, { once: true });
+
 
 /* ---------- sessão ---------- */
 let statusAnt = new Map();
@@ -1757,8 +1776,8 @@ document.addEventListener("click", e => {
       inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus(); break; }
     case "limparFiltros": resetFiltros(); render(); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
-    case "avisoAbrir": { const id = el.dataset.id; avisos = avisos.filter(a => a.id !== id); renderAviso();
-      if (!isEsc()) { aba = "meus"; resetFiltros(); render(); } abrirDetalhe(id); break; }
+    case "avisoAbrir": abrirDoAviso(el.dataset.id); break;
+    case "ativarAvisos": try { Notification.requestPermission().then(() => render()); } catch (e) {} break;
     case "fechar": fecharDetalhe(); break;
     case "verFoto": { const p = PEDIDOS.find(x => x.id === aberto); if (p) verFoto(p.fotos[+el.dataset.i]); break; }
     case "msg": enviarMsg(); break;
