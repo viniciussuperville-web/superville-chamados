@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.17-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.18-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -529,6 +529,20 @@ function beep() {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.connect(g); g.connect(audioCtx.destination); o.frequency.value = 880; g.gain.value = 0.08;
     o.start(); o.stop(audioCtx.currentTime + 0.18);
+  } catch (e) {}
+}
+// Som de "chamado resolvido": três notas subindo, bem audível, tocado duas vezes
+function somResolvido() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    [0, 1].forEach(rep => [660, 880, 1175].forEach((fq, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = t0 + rep * 0.9 + i * 0.16;
+      o.type = "triangle"; o.frequency.value = fq; o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      o.start(t); o.stop(t + 0.16);
+    }));
   } catch (e) {}
 }
 // iPhone só libera som depois do primeiro toque na tela
@@ -1147,7 +1161,7 @@ function vNovo() {
   if (enviado) return vEnviado();
   const eu = Pessoa.ler();
   const quem = ehLoja() && eu ? `<div class="banner neutro quem"><span>Você está como <b>${esc(eu.nome)}</b> · ${esc(eu.cargo)}</span><button type="button" class="btn-link" data-act="trocarPessoa">Não é você? Trocar</button></div>` : "";
-  if (!novoTipo) return `${quem}<section class="card">
+  if (!novoTipo) return `${quem}${ehLoja() ? avisoSistemaHTML() : ""}<section class="card">
       <h2>O que você precisa?</h2>
       <p class="muted">Toque em uma opção. O escritório recebe na hora.</p>
       <div class="tipos">${Object.entries(TIPOS).map(([k, t]) => `
@@ -1331,7 +1345,7 @@ function farolHTML() {
 
 function vMeus() {
   const ger = ehGerenteAqui();
-  return `<div class="banner neutro">${ger ? "Seus chamados e os <b>concluídos da loja</b>. " : "Seus chamados ficam aqui. "}🟢 <b>Concluído</b> = já entregue na loja. Não chegou? Toque no chamado e em <b>Não recebi</b>.</div>
+  return `${avisoSistemaHTML()}<div class="banner neutro">${ger ? "Seus chamados e os <b>concluídos da loja</b>. " : "Seus chamados ficam aqui. "}🟢 <b>Concluído</b> = já entregue na loja. Não chegou? Toque no chamado e em <b>Não recebi</b>.</div>
     ${farolHTML()}
     <div class="filtros">${chipsStatus()}</div>
     <div class="filtros">
@@ -1344,8 +1358,11 @@ function vMeus() {
 // Filtros do escritório: tipo, quem pediu, setor, com quem está e loja
 function avisoSistemaHTML() {
   if (!("Notification" in window)) return "";
-  if (Notification.permission === "default") return `<div class="banner neutro" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>🔔 Receba o pop-up de chamado novo mesmo com o portal minimizado ou atrás de outra janela.</span><button class="btn" data-act="ativarAvisos" style="flex:none">Ativar avisos</button></div>`;
-  if (Notification.permission === "denied") return `<div class="banner neutro">🔕 Os avisos do computador estão bloqueados. Para liberar: clique no <b>cadeado</b> ao lado do endereço do site › <b>Notificações</b> › <b>Permitir</b>, e recarregue a página.</div>`;
+  const loja = ehLoja();
+  if (Notification.permission === "default") return `<div class="banner neutro" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>🔔 ${loja ? "Ative os avisos: o celular <b>apita e mostra um aviso</b> quando o seu chamado for resolvido." : "Receba o pop-up de chamado novo mesmo com o portal minimizado ou atrás de outra janela."}</span><button class="btn" data-act="ativarAvisos" style="flex:none">Ativar avisos</button></div>`;
+  if (Notification.permission === "denied") return loja
+    ? `<div class="banner neutro">🔕 Os avisos estão bloqueados neste celular. Para liberar: segure o ícone <b>Chamados</b> › <b>Informações do app</b> › <b>Notificações</b> › <b>Permitir</b>. Ou chame o escritório que a gente ajuda.</div>`
+    : `<div class="banner neutro">🔕 Os avisos do computador estão bloqueados. Para liberar: clique no <b>cadeado</b> ao lado do endereço do site › <b>Notificações</b> › <b>Permitir</b>, e recarregue a página.</div>`;
   return "";
 }
 function filtrosEscHTML() {
@@ -1620,24 +1637,35 @@ async function enviarMsg() {
   catch (e) { ta.value = txt; toast("Mensagem não enviada: " + (e.code || e.message), "erro"); }
 }
 
+/* ---------- avisos do sistema (pop-up + som do celular) ---------- */
+let swReg = null;
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("sw.js").then(r => { swReg = r; }).catch(() => {});
+  navigator.serviceWorker.addEventListener("message", e => { if (e.data?.tipo === "abrirChamado" && e.data.id && Store.perfil) abrirDoAviso(e.data.id); });
+}
+// Android só mostra aviso do sistema pelo service worker; no computador vale o aviso comum
+async function avisoDoSistema(av) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const titulo = `${av.titulo} ${num4(av.numero)}`;
+  const opc = { body: av.texto.replace(/<br>/g, "\n").replace(/<[^>]+>/g, ""), icon: "icone-192.png", badge: "icone-192.png",
+    tag: "chamado-" + av.id, renotify: true, requireInteraction: true, vibrate: av.urgente ? [200, 100, 200, 100, 200] : [300, 150, 300, 150, 300], data: { id: av.id } };
+  try {
+    const reg = swReg || (navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null);
+    if (reg && reg.showNotification) { await reg.showNotification(titulo, opc); return; }
+  } catch (e) {}
+  try { const n = new Notification(titulo, opc); n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); abrirDoAviso(av.id); }; } catch (e) {}
+}
+
 /* ---------- pop-up de aviso ---------- */
 // Escritório: avisa cada chamado novo. Loja: avisa quando um chamado aberto por esta pessoa é resolvido.
 let avisos = [];
 function mostrarAviso(av) {
   avisos = avisos.filter(a => a.id !== av.id); avisos.push(av);
   renderAviso();
-  beep(); if (av.urgente) setTimeout(beep, 250);
-  try { navigator.vibrate?.(av.urgente ? [200, 100, 200] : 200); } catch (e) {}
-  // Fora da tela (outra aba ou app minimizado): aviso do sistema, se o celular/computador permitir
-  try {
-    // portal em outra aba, minimizado ou atrás de outra janela: pop-up do sistema; o clique abre o chamado
-    if ((document.hidden || !document.hasFocus()) && "Notification" in window && Notification.permission === "granted") {
-      const n = new Notification(`${av.titulo} ${num4(av.numero)}`, {
-        body: av.texto.replace(/<br>/g, "\n").replace(/<[^>]+>/g, ""), icon: "icone-192.png", tag: "chamado-" + av.id,
-        requireInteraction: isEsc(), renotify: true });
-      n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); abrirDoAviso(av.id); };
-    }
-  } catch (e) {}
+  if (av.resolvido) somResolvido(); else { beep(); if (av.urgente) setTimeout(beep, 250); }
+  try { navigator.vibrate?.(av.resolvido ? [300, 150, 300, 150, 300] : av.urgente ? [200, 100, 200] : 200); } catch (e) {}
+  // Portal minimizado, em outra aba ou com a tela apagada: pop-up do sistema com o som do celular; o toque abre o chamado
+  if (document.hidden || !document.hasFocus()) avisoDoSistema(av);
 }
 // Abre o chamado a partir do pop-up (do portal ou do sistema)
 function abrirDoAviso(id) {
@@ -1655,7 +1683,32 @@ function renderAviso() {
     <div class="aviso-acoes"><button class="btn" data-act="avisoAbrir" data-id="${esc(av.id)}">${av.botao}</button><button class="btn-sec" data-act="avisoFechar">${resto ? "Próximo aviso" : "OK, entendi"}</button></div>`;
   fundo.hidden = false;
 }
+// Loja: lembra neste celular quais "resolvidos" já foram avisados, para avisar também os que
+// foram resolvidos enquanto o portal estava fechado (aparecem assim que o portal abre de novo)
+const Avisados = {
+  chave: () => "cs_avisados_" + (Store.perfil?.loja || "") + "_" + (Pessoa.ler()?.id || ""),
+  ler() { try { return JSON.parse(localStorage.getItem(this.chave()) || "null"); } catch (e) { return null; } },
+  gravar(ids) { try { localStorage.setItem(this.chave(), JSON.stringify(ids.slice(-300))); } catch (e) {} }
+};
+function avisoResolvido(p) {
+  const t = TIPOS[p.tipo] || { nome: "" };
+  mostrarAviso({ id: p.id, numero: p.numero, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅",
+    titulo: "Chamado resolvido!", sub: "O escritório já entregou na loja",
+    texto: `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>.<br><span class="muted">Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</span>`,
+    botao: "Ver chamado" });
+}
+function avisosResolvidosLoja(lista) {
+  if (!ehLoja() || !Pessoa.ler()) return;
+  const meusOk = lista.filter(p => p.status === "concluido" && ehMeu(p));
+  const ja = Avisados.ler();
+  if (ja === null) { Avisados.gravar(meusOk.map(p => p.id)); return; }   // primeira vez neste celular: não avisa o histórico
+  const set = new Set(ja), limite = Date.now() - 24 * 3600e3;
+  const novos = meusOk.filter(p => !set.has(p.id) && (p.concluidoEm || 0) > limite).sort((a, b) => (a.concluidoEm || 0) - (b.concluidoEm || 0));
+  novos.forEach(avisoResolvido);
+  if (novos.length) Avisados.gravar([...ja, ...novos.map(p => p.id)]);
+}
 function avisosDe(lista) {
+  avisosResolvidosLoja(lista);
   if (primeiraCarga) return;
   if (isEsc()) {
     lista.filter(p => !conhecidos.has(p.id) && p.status === "aberto").forEach(p => {
@@ -1665,14 +1718,6 @@ function avisosDe(lista) {
         texto: `<b>${esc(t.nome)}</b><br>${esc(p.solicitanteNome || "")}${p.cargo ? " · " + esc(p.cargo) : ""}${p.setor ? " · " + esc(p.setor) : ""}`,
         botao: "Abrir chamado" });
     });
-  } else if (ehLoja()) {
-    lista.filter(p => statusAnt.has(p.id) && statusAnt.get(p.id) !== "concluido" && p.status === "concluido" && ehMeu(p)).forEach(p => {
-      const t = TIPOS[p.tipo] || { nome: "" };
-      mostrarAviso({ id: p.id, numero: p.numero, urgente: false, cor: "#3BB072", icone: "✅",
-        titulo: "Chamado resolvido!", sub: "O escritório já entregou na loja",
-        texto: `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>.<br><span class="muted">Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</span>`,
-        botao: "Ver chamado" });
-    });
   }
 }
 // Pede permissão para avisos do sistema no primeiro toque (só funciona em alguns aparelhos)
@@ -1680,6 +1725,7 @@ function avisosDe(lista) {
 
 /* ---------- sessão ---------- */
 let statusAnt = new Map();
+let chamadoDoLink = new URLSearchParams(location.search).get("chamado");
 function onPedidos(lista) {
   ultimaSync = Date.now(); setTimeout(atualizarAoVivo, 0);
   avisosDe(lista);
@@ -1689,6 +1735,7 @@ function onPedidos(lista) {
   if (ehLoja() && !Pessoa.ler()) { montarTopo(); return; }
   refrescar();
   if (aberto) renderDetalhe();
+  if (chamadoDoLink && lista.some(p => p.id === chamadoDoLink)) { const id = chamadoDoLink; chamadoDoLink = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} abrirDoAviso(id); }
 }
 
 function iniciarSessao() {
@@ -1777,7 +1824,7 @@ document.addEventListener("click", e => {
     case "limparFiltros": resetFiltros(); render(); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": abrirDoAviso(el.dataset.id); break;
-    case "ativarAvisos": try { Notification.requestPermission().then(() => render()); } catch (e) {} break;
+    case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { render(); if (p === "granted") { somResolvido(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;
     case "fechar": fecharDetalhe(); break;
     case "verFoto": { const p = PEDIDOS.find(x => x.id === aberto); if (p) verFoto(p.fotos[+el.dataset.i]); break; }
     case "msg": enviarMsg(); break;
