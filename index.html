@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.18-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.18-2";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -1887,8 +1887,19 @@ document.addEventListener("submit", e => {
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#dlg").hidden && aberto) fecharDetalhe(); });
 window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v4" && Store.modo === "demo") Store._avisar(); });
-// Escritório: apita a cada 45s enquanto houver URGENTE sem responsável
-setInterval(() => { if (isEsc() && PEDIDOS.some(p => p.status === "aberto" && ehUrgente(p))) { beep(); setTimeout(beep, 250); } }, 45000);
+// Escritório: chamado URGENTE apita a cada 15s até alguém assumir (com o portal minimizado, repete o aviso do sistema)
+setInterval(() => {
+  if (!isEsc()) return;
+  const urg = PEDIDOS.filter(p => p.status === "aberto" && ehUrgente(p)).sort((a, b) => a.criadoEm - b.criadoEm);
+  if (!urg.length) return;
+  beep(); setTimeout(beep, 250); setTimeout(beep, 500);
+  try { navigator.vibrate?.([200, 100, 200, 100, 200]); } catch (e) {}
+  if (document.hidden || !document.hasFocus()) {
+    const p = urg[0], t = TIPOS[p.tipo] || { nome: "" };
+    avisoDoSistema({ id: p.id, numero: p.numero, urgente: true, titulo: urg.length > 1 ? `${urg.length} chamados URGENTES sem responsável!` : "Chamado URGENTE sem responsável!",
+      texto: `${t.nome} · Loja ${p.loja}<br>Toque para abrir e assumir.` });
+  }
+}, 15000);
 // Atualiza "há X min" e atrasos a cada minuto
 setInterval(() => { if (Store.perfil && !aberto && $("#dlg").hidden) refrescar(); }, 30000);
 
