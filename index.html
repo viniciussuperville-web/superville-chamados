@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.18-5";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.18-6";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -1521,6 +1521,7 @@ function acoesHTML(p) {
   const dono = ehResponsavel(p), G = isGestor(), ativo = ATIVOS.includes(p.status);
   if (isEsc()) {
     if (p.status === "aberto") { L.push(b("assumir", "Assumir chamado")); dica = "Quem assumir fica responsável por resolver e entregar."; }
+    if (p.status === "aberto" && G) { L.push(b("cancelar", "Cancelar chamado", "sec")); dica += " Como gestor, você também pode cancelar."; }
     if (p.status === "andamento" && (dono || G)) {
       L.push(b("resolver", "Resolvido e entregue"));
       L.push(b("cancelar", "Cancelar", "sec"));
