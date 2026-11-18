@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.18-2";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.18-4";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -543,6 +543,20 @@ function somResolvido() {
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
       o.start(t); o.stop(t + 0.16);
     }));
+  } catch (e) {}
+}
+// Som de "chamado reaberto pela loja": alarme de duas notas (agudo-grave) repetido 3 vezes, diferente do novo e do urgente
+function somReaberto() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    for (let i = 0; i < 6; i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = t0 + i * 0.22;
+      o.type = "square"; o.frequency.value = i % 2 ? 523 : 988; o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.start(t); o.stop(t + 0.21);
+    }
   } catch (e) {}
 }
 // iPhone só libera som depois do primeiro toque na tela
@@ -1360,6 +1374,7 @@ function avisoSistemaHTML() {
   if (!("Notification" in window)) return "";
   const loja = ehLoja();
   if (Notification.permission === "default") return `<div class="banner neutro" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>🔔 ${loja ? "Ative os avisos: o celular <b>apita e mostra um aviso</b> quando o seu chamado for resolvido." : "Receba o pop-up de chamado novo mesmo com o portal minimizado ou atrás de outra janela."}</span><button class="btn" data-act="ativarAvisos" style="flex:none">Ativar avisos</button></div>`;
+  if (Notification.permission === "granted") return loja ? `<div class="banner neutro" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>🔔 Avisos ligados: o celular apita quando o seu chamado for resolvido.</span><button class="btn-sec" data-act="testarAviso" style="flex:none;width:auto;padding:8px 14px">Testar</button></div>` : "";
   if (Notification.permission === "denied") return loja
     ? `<div class="banner neutro">🔕 Os avisos estão bloqueados neste celular. Para liberar: segure o ícone <b>Chamados</b> › <b>Informações do app</b> › <b>Notificações</b> › <b>Permitir</b>. Ou chame o escritório que a gente ajuda.</div>`
     : `<div class="banner neutro">🔕 Os avisos do computador estão bloqueados. Para liberar: clique no <b>cadeado</b> ao lado do endereço do site › <b>Notificações</b> › <b>Permitir</b>, e recarregue a página.</div>`;
@@ -1600,7 +1615,8 @@ async function executar(acao, p) {
       case "contestar":
         o = await dialogo({ titulo: "Não recebi / não resolveu", texto: `O chamado volta para ${p.responsavelNome || "o escritório"}. Conte o que aconteceu.`, placeholder: "Ex.: placas não chegaram na loja", obrigatorio: true, botao: "Reabrir chamado", perigo: true });
         if (o === null) return;
-        await Store.atualizar(p.id, { status: p.responsavelUid ? "andamento" : "aberto", concluidoEm: null, entreguePara: null, contestado: true }, "Loja reabriu: não recebeu / não resolveu", o); break;
+        await Store.atualizar(p.id, { status: p.responsavelUid ? "andamento" : "aberto", concluidoEm: null, entreguePara: null, contestado: true,
+          reabertoEm: Date.now(), reabertoPorNome: quemSou() || "", reabertoPorDispositivo: Pessoa.ler()?.id || "", motivoReabertura: o }, "Loja reabriu: não recebeu / não resolveu", o); break;
       case "cancelar":
         if (isEsc() && !dono && !G) return negar("Só quem assumiu o chamado pode cancelar.");
         o = await dialogo({ titulo: "Cancelar chamado", texto: "Informe o motivo do cancelamento.", placeholder: "Motivo", obrigatorio: true, botao: "Cancelar chamado", perigo: true });
@@ -1662,7 +1678,7 @@ let avisos = [];
 function mostrarAviso(av) {
   avisos = avisos.filter(a => a.id !== av.id); avisos.push(av);
   renderAviso();
-  if (av.resolvido) somResolvido(); else { beep(); if (av.urgente) setTimeout(beep, 250); }
+  if (av.resolvido) somResolvido(); else if (av.reaberto) somReaberto(); else { beep(); if (av.urgente) setTimeout(beep, 250); }
   try { navigator.vibrate?.(av.resolvido ? [300, 150, 300, 150, 300] : av.urgente ? [200, 100, 200] : 200); } catch (e) {}
   // Portal minimizado, em outra aba ou com a tela apagada: pop-up do sistema com o som do celular; o toque abre o chamado
   if (document.hidden || !document.hasFocus()) avisoDoSistema(av);
@@ -1670,6 +1686,7 @@ function mostrarAviso(av) {
 // Abre o chamado a partir do pop-up (do portal ou do sistema)
 function abrirDoAviso(id) {
   avisos = avisos.filter(a => a.id !== id); renderAviso();
+  if (id === "teste") return;
   if (!isEsc()) { aba = "meus"; resetFiltros(); render(); }
   else if (aba !== "fila") { aba = "fila"; render(); }
   abrirDetalhe(id);
@@ -1693,24 +1710,35 @@ const Avisados = {
 function avisoResolvido(p) {
   const t = TIPOS[p.tipo] || { nome: "" };
   mostrarAviso({ id: p.id, numero: p.numero, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅",
-    titulo: "Chamado resolvido!", sub: "O escritório já entregou na loja",
+    titulo: p.reabertoEm ? "Chamado reaberto foi resolvido!" : "Chamado resolvido!", sub: "O escritório já entregou na loja",
     texto: `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>.<br><span class="muted">Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</span>`,
     botao: "Ver chamado" });
 }
 function avisosResolvidosLoja(lista) {
   if (!ehLoja() || !Pessoa.ler()) return;
-  const meusOk = lista.filter(p => p.status === "concluido" && ehMeu(p));
+  const eu = Pessoa.ler();
+  const reabriEu = p => !!p.reabertoEm && p.loja === Store.perfil?.loja && (p.reabertoPorDispositivo === eu.id || normNome(p.reabertoPorNome) === normNome(eu.nome));
+  const meusOk = lista.filter(p => p.status === "concluido" && (ehMeu(p) || reabriEu(p)));
+  const chave = p => p.id + ":" + (p.concluidoEm || 0);
   const ja = Avisados.ler();
-  if (ja === null) { Avisados.gravar(meusOk.map(p => p.id)); return; }   // primeira vez neste celular: não avisa o histórico
+  // primeira vez neste celular: não avisa o histórico antigo, mas avisa o que foi resolvido nas últimas 2 horas
+  if (ja === null) { const velhos = meusOk.filter(p => (p.concluidoEm || 0) < Date.now() - 2 * 3600e3).map(chave); Avisados.gravar(velhos); return avisosResolvidosLoja(lista); }
   const set = new Set(ja), limite = Date.now() - 24 * 3600e3;
-  const novos = meusOk.filter(p => !set.has(p.id) && (p.concluidoEm || 0) > limite).sort((a, b) => (a.concluidoEm || 0) - (b.concluidoEm || 0));
+  const novos = meusOk.filter(p => !set.has(chave(p)) && !(set.has(p.id) && !p.reabertoEm) && (p.concluidoEm || 0) > limite).sort((a, b) => (a.concluidoEm || 0) - (b.concluidoEm || 0));
   novos.forEach(avisoResolvido);
-  if (novos.length) Avisados.gravar([...ja, ...novos.map(p => p.id)]);
+  if (novos.length) Avisados.gravar([...ja, ...novos.map(chave)]);
 }
 function avisosDe(lista) {
   avisosResolvidosLoja(lista);
   if (primeiraCarga) return;
   if (isEsc()) {
+    lista.filter(p => statusAnt.get(p.id) === "concluido" && ["aberto", "andamento"].includes(p.status) && p.contestado).forEach(p => {
+      const t = TIPOS[p.tipo] || { nome: "" };
+      mostrarAviso({ id: p.id, numero: p.numero, urgente: false, reaberto: true, cor: "#E8710A", icone: "↩️",
+        titulo: "Chamado REABERTO pela loja!", sub: `Loja ${p.loja}${p.responsavelNome ? " · volta para " + p.responsavelNome : ""}`,
+        texto: `<b>${esc(t.nome)}</b><br>${esc(p.reabertoPorNome || "A loja")} disse que não recebeu ou não resolveu.${p.motivoReabertura ? `<br><span class="muted">“${esc(p.motivoReabertura)}”</span>` : ""}`,
+        botao: "Abrir chamado" });
+    });
     lista.filter(p => !conhecidos.has(p.id) && p.status === "aberto").forEach(p => {
       const urg = ehUrgente(p), t = TIPOS[p.tipo] || { nome: "" };
       mostrarAviso({ id: p.id, numero: p.numero, urgente: urg, cor: urg ? "#D93025" : "#111111", icone: urg ? "🚨" : "🔔",
@@ -1822,6 +1850,7 @@ document.addEventListener("click", e => {
       el.classList.toggle("neg", v.startsWith("-"));
       inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus(); break; }
     case "limparFiltros": resetFiltros(); render(); break;
+    case "testarAviso": liberarSom(); mostrarAviso({ id: "teste", numero: 0, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅", titulo: "Teste de aviso", sub: "É assim que chega quando o escritório resolve", texto: "Se você ouviu o som, está tudo certo! 👍", botao: "OK" }); setTimeout(() => avisoDoSistema({ id: "teste", numero: 0, titulo: "Teste de aviso", texto: "Assim chega o aviso com o celular bloqueado." }), 300); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": abrirDoAviso(el.dataset.id); break;
     case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { render(); if (p === "granted") { somResolvido(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;

@@ -35,7 +35,7 @@ Status: **Aberto → Em andamento → Resolvido e entregue** (ou Cancelado).
 3. Ela resolve, entrega na loja e marca **Resolvido e entregue**, informando para quem entregou. **Resolvido = já entregue.**
 4. Se não chegou, quem abriu toca em **Não recebi**. O chamado volta para a **mesma pessoa** do escritório e conta no painel como "Reaberto pela loja".
 
-**Urgente:** prazo de 30 min em qualquer tipo. A loja precisa escrever o motivo. No escritório aparece um alerta vermelho no topo da Fila, que apita a cada 15s até alguém assumir.
+**Urgente:** prazo de 30 min em qualquer tipo. A loja precisa escrever o motivo. No escritório aparece um alerta vermelho no topo da Fila, que apita a cada 15s até alguém assumir. Chamado reaberto pela loja ("Não recebi") apita no escritório com um toque diferente; quando é resolvido de novo, a pessoa que reabriu recebe o pop-up no celular.
 
 Prazos, setores e lojas ficam no topo do `index.html`, no bloco **CONFIGURAÇÃO**.
 A lista de balanças de cada loja fica em `BALANCAS`, com a mesma numeração do sistema de carga. Vila Romana: 09 a 25, 49, 55, 56, 57, 58 e 60 (23 balanças). Ao expandir, inclua a lista de cada loja nova.
