@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.18-4";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.18-5";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -1048,9 +1048,19 @@ function renderIdentificacao() {
       <label>Seu nome<input name="nome" required autocomplete="name" value="${esc(eu?.nome || "")}" placeholder="Nome e sobrenome"></label>
       <label>Cargo<select name="cargo" required><option value="">Selecione</option>${opts(CARGOS_LOJA, eu?.cargo)}</select></label>
       <label id="senhaGer" ${eu?.cargo === "Gerente" ? "" : "hidden"}>Senha do gerente<input name="senhaGerente" type="password" autocomplete="off" placeholder="Só os gerentes sabem" ${eu?.cargo === "Gerente" ? "required" : ""}></label>
+      ${caixaAvisosHTML()}
       <button class="btn btn-full" type="submit">Continuar</button>
     </form>`;
   chipify();
+}
+// Primeiro acesso: botão para ligar os avisos do celular (pop-up + apito quando o chamado for resolvido)
+function caixaAvisosHTML() {
+  if (!("Notification" in window)) return "";
+  const p = Notification.permission;
+  const corpo = p === "granted" ? `<b>✅ Avisos ligados!</b><span>O celular vai apitar quando o seu chamado for resolvido.</span>`
+    : p === "denied" ? `<b>🔕 Avisos bloqueados</b><span>Peça ajuda ao escritório para liberar os avisos neste celular.</span>`
+    : `<b>🔔 Ligue os avisos</b><span>Assim o celular apita e mostra um aviso quando o seu chamado for resolvido.</span><button type="button" class="btn" data-act="ativarAvisos" style="margin-top:8px">Ativar avisos</button>`;
+  return `<div id="boxAvisos" style="display:flex;flex-direction:column;gap:4px;margin:14px 0;padding:14px;border-radius:12px;background:${p === "granted" ? "#EAF7EF" : "#F4F5F2"};border:1px solid ${p === "granted" ? "#3BB072" : "#E2E4DF"}">${corpo}</div>`;
 }
 async function salvarIdentificacao(form) {
   if (!validar(form)) return;
@@ -1853,7 +1863,7 @@ document.addEventListener("click", e => {
     case "testarAviso": liberarSom(); mostrarAviso({ id: "teste", numero: 0, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅", titulo: "Teste de aviso", sub: "É assim que chega quando o escritório resolve", texto: "Se você ouviu o som, está tudo certo! 👍", botao: "OK" }); setTimeout(() => avisoDoSistema({ id: "teste", numero: 0, titulo: "Teste de aviso", texto: "Assim chega o aviso com o celular bloqueado." }), 300); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": abrirDoAviso(el.dataset.id); break;
-    case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { render(); if (p === "granted") { somResolvido(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;
+    case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { const bx = $("#boxAvisos"); if (bx) bx.outerHTML = caixaAvisosHTML(); else render(); if (p === "granted") { somResolvido(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;
     case "fechar": fecharDetalhe(); break;
     case "verFoto": { const p = PEDIDOS.find(x => x.id === aberto); if (p) verFoto(p.fotos[+el.dataset.i]); break; }
     case "msg": enviarMsg(); break;
