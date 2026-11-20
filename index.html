@@ -360,7 +360,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.18-6";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.20-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
 const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
@@ -1455,7 +1455,8 @@ function vPainel() {
   const kpi = (n, rot, cor) => `<div class="kpi static" style="--c:${cor}"><b>${n}</b><span>${rot}</span></div>`;
   const porTipo = agrupar(p => p.tipo).map(r => ({ ...r, label: TIPOS[r.k]?.nome || r.k }));
 
-  return `<div class="filtros">${[["hoje", "Hoje"], ["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"]].map(([v, n]) => `<button class="chip ${periodo === v ? "on" : ""}" data-act="periodo" data-v="${v}">${n}</button>`).join("")}</div>
+  return `<div class="card" style="display:flex;align-items:center;gap:12px;justify-content:space-between"><span>📥 Baixe todos os chamados em planilha (abre no Excel) para análises e apresentações.</span><button class="btn" data-act="exportarDados" style="flex:none">Baixar planilha</button></div>
+    <div class="filtros">${[["hoje", "Hoje"], ["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"]].map(([v, n]) => `<button class="chip ${periodo === v ? "on" : ""}" data-act="periodo" data-v="${v}">${n}</button>`).join("")}</div>
     <div class="card"><h3>Sumário</h3><ol class="legenda" style="margin:0;padding-left:20px">
       <li>Visão geral</li><li>Chamados por tipo</li><li>Chamados por setor</li><li>Quem mais solicita</li><li>Quem resolve (escritório)</li><li>Como ler este painel</li></ol></div>
     <div class="card"><h3>1. Visão geral</h3><div class="kpis" style="margin:0">
@@ -1484,6 +1485,27 @@ function vPainel() {
       <p><b>Quem resolve (5):</b> chamados por pessoa do escritório, com o tempo médio e o % no prazo de cada uma. "Sem responsável" são chamados que ninguém assumiu.</p>
       <p><b>Rankings (2 a 5):</b> sempre do maior para o menor volume. Muitos chamados do mesmo setor ou da mesma pessoa podem indicar um problema que se repete na loja (ex.: muitos produtos sem cadastro na mesma seção).</p>
     </div></div>`;
+}
+
+/* ---------- exportação (gestor): todos os chamados em CSV para o Excel ---------- */
+function exportarDados() {
+  const dt = ms => ms ? new Date(ms).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }).replace(",", "") : "";
+  const min = (a, b) => a && b ? Math.round((b - a) / 60000) : "";
+  const cel = v => { v = v == null ? "" : String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const cab = ["numero", "tipo", "loja", "setor", "solicitante", "cargo", "prioridade_inicial", "virou_urgente", "status", "aberto_em", "assumido_em", "resolvido_em", "prazo",
+    "min_ate_assumir", "min_ate_resolver", "no_prazo", "responsavel", "resolvido_por", "entregue_para", "reaberto_pela_loja", "qtd_itens", "qtd_placas", "cancelado_motivo"];
+  const linhas = [...PEDIDOS].sort((a, b) => a.criadoEm - b.criadoEm).map(p => {
+    const canc = (p.historico || []).filter(h => /cancel/i.test(h.acao || "")).pop();
+    return [p.numero, TIPOS[p.tipo]?.nome || p.tipo, p.loja, p.setor, p.solicitanteNome, p.cargo, p.prioridade, virouUrgente(p) && p.prioridade !== "urgente" ? "sim" : "não",
+      STATUS[p.status]?.nome || p.status, dt(p.criadoEm), dt(p.assumidoEm), dt(p.concluidoEm), dt(prazoMs(p)),
+      min(p.criadoEm, p.assumidoEm), min(p.criadoEm, p.concluidoEm), p.concluidoEm ? (noPrazo(p) ? "sim" : "não") : "", p.responsavelNome, p.resolvidoPor,
+      p.entreguePara, p.contestado ? "sim" : "não", (p.dados?.itens || []).length || "", totalPlacas(p) || "", canc ? (canc.obs || canc.acao) : ""].map(cel).join(";");
+  });
+  const blob = new Blob(["\ufeff" + [cab.join(";"), ...linhas].join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = `chamados-superville-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast(`Planilha baixada com ${linhas.length} chamados.`, "ok");
 }
 
 /* ---------- detalhe do chamado ---------- */
@@ -1852,6 +1874,7 @@ document.addEventListener("click", e => {
       else { filtros.status = el.dataset.v; filtros.atrasados = false; }
       render(); break;
     case "periodo": periodo = el.dataset.v; render(); break;
+    case "exportarDados": exportarDados(); break;
     case "imprimir": window.print(); break;
     case "abrir": abrirDetalhe(el.dataset.id); break;
     case "recarregar": location.reload(); break;
