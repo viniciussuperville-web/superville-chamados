@@ -371,7 +371,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.24-4";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.24-5";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 15;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo) · fase de testes, pode mudar
 const PRAZO_NORMAL_H = 1;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente · fase de testes, pode mudar
 // Prazos antigos (chamados abertos antes de 24/11/2026 não guardavam o prazo): urgente 30 min, normal 2h
@@ -438,6 +438,7 @@ const DEMO_USERS = [
   { uid: "d1", nome: "Loja Vila Romana (demo)", perfil: "solicitante", cargo: "Loja",       loja: "Vila Romana" },
   { uid: "d4", nome: "Escritório 1 (demo)",     perfil: "escritorio",  cargo: "Escritório", loja: "" },
   { uid: "d5", nome: "Escritório 2 (demo)",     perfil: "escritorio",  cargo: "Escritório", loja: "" },
+  { uid: "d7", nome: "Telefone do Escritório (demo)", perfil: "avisos", cargo: "Só avisos", loja: "" },
   { uid: "d6", nome: "Gestor (demo)",           perfil: "gestor",      cargo: "Gestor",     loja: "" }
 ];
 
@@ -501,7 +502,9 @@ const fmtQtd = n => isNaN(n) ? "—" : n.toLocaleString("pt-BR", { maximumFracti
 const difAjuste = i => numero(i.fisico) - numero(i.sistema);
 const nomeItem = i => i.descricao || "Cód. " + (i.codigo || "?");
 // Acesso total: escritório e gestor. Gestor também vê o painel e transfere chamados.
-const isEsc = () => ["escritorio", "gestor"].includes(Store.perfil?.perfil);
+// "avisos": aparelho do escritório só para receber avisos (vê a fila, apita, mas não assume nem resolve)
+const isEsc = () => ["escritorio", "gestor", "avisos"].includes(Store.perfil?.perfil);
+const soAvisos = () => Store.perfil?.perfil === "avisos";
 const isGestor = () => Store.perfil?.perfil === "gestor";
 const ehLoja = () => Store.perfil?.perfil === "solicitante";
 
@@ -533,7 +536,7 @@ const visivelLoja = p => ehMeu(p) || (ehGerenteAqui() && p.status === "concluido
 const quemSou = () => ehLoja() ? (Pessoa.ler()?.nome || Store.perfil?.nome) : Store.perfil?.nome;
 const ehResponsavel = p => !!p.responsavelUid && p.responsavelUid === Store.perfil?.uid;
 // Quem pode mexer no chamado (mensagens e ações)
-const podeMexer = p => isGestor() || (isEsc() ? (!p.responsavelUid || ehResponsavel(p)) : ehMeu(p));
+const podeMexer = p => !soAvisos() && (isGestor() || (isEsc() ? (!p.responsavelUid || ehResponsavel(p)) : ehMeu(p)));
 
 function toast(msg, tipo = "") {
   const t = $("#toast"); t.textContent = msg; t.className = "show " + tipo;
@@ -951,7 +954,8 @@ const Store = {
   async salvarToken(token, extra) {
     if (this.modo !== "firebase") return;
     const { db, F } = this._fb; const P = this.perfil;
-    await F.setDoc(F.doc(db, "tokens", token), { token, uid: P.uid, perfil: P.perfil, loja: P.loja || "", nome: extra.nome || P.nome || "", dispositivoId: extra.dispositivoId || "", atualizadoEm: Date.now() });
+    // aparelho "só avisos" recebe os mesmos avisos do escritório
+    await F.setDoc(F.doc(db, "tokens", token), { token, uid: P.uid, perfil: P.perfil === "avisos" ? "escritorio" : P.perfil, soAvisos: P.perfil === "avisos", loja: P.loja || "", nome: extra.nome || P.nome || "", dispositivoId: extra.dispositivoId || "", atualizadoEm: Date.now() });
   },
 
   async atualizar(id, patch, acao, obs) {
@@ -1645,6 +1649,7 @@ function blocoDados(p) {
 
 function acoesHTML(p) {
   const b = (acao, rot, cls = "") => `<button class="${cls === "sec" ? "btn-sec" : "btn" + (cls === "perigo" ? " perigo" : "")}" data-act="acao" data-acao="${acao}">${rot}</button>`;
+  if (soAvisos()) return `<div class="banner neutro">📣 Este aparelho é só para <b>avisos</b>. Para assumir ou resolver, use o computador ou o celular de quem atende.</div>`;
   const L = []; let dica = "";
   const dono = ehResponsavel(p), G = isGestor(), ativo = ATIVOS.includes(p.status);
   if (isEsc()) {
@@ -1781,6 +1786,7 @@ function verFoto(src) {
 async function executar(acao, p) {
   const P = Store.perfil, G = isGestor(), dono = ehResponsavel(p);
   const negar = msg => { toast(msg, "erro"); };
+  if (soAvisos()) return negar("Este aparelho é só para avisos.");
   try {
     let o;
     switch (acao) {

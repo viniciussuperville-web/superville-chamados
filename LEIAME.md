@@ -137,6 +137,8 @@ service cloud.firestore {
     function gestor() { return logado() && perfil().perfil == 'gestor'; }
     function escritorio() { return logado() && perfil().perfil == 'escritorio'; }
     function acessoTotal() { return gestor() || escritorio(); }
+    // aparelho do escritório só para avisos: lê os chamados, não altera nada
+    function avisos() { return logado() && perfil().perfil == 'avisos'; }
 
     match /usuarios/{uid} {
       allow read: if logado() && (request.auth.uid == uid || acessoTotal());
@@ -146,7 +148,7 @@ service cloud.firestore {
     match /chamados/{id} {
       // Escritório e gestor veem tudo; a conta da loja vê os chamados da própria loja
       // (a separação entre pessoas da mesma loja é feita na tela, pelo celular e pelo nome)
-      allow read: if acessoTotal()
+      allow read: if acessoTotal() || avisos()
         || (logado() && perfil().perfil == 'solicitante' && perfil().loja == resource.data.loja);
 
       allow create: if logado() && perfil().perfil == 'solicitante'
@@ -175,7 +177,7 @@ service cloud.firestore {
 
     // Fotos grandes (ex.: placa colocada): ficam fora do chamado para a lista continuar leve
     match /anexos/{id} {
-      allow read: if acessoTotal() || (logado() && perfil().loja == resource.data.loja);
+      allow read: if acessoTotal() || avisos() || (logado() && perfil().loja == resource.data.loja);
       allow create, update: if logado() && perfil().perfil == 'solicitante'
         && request.resource.data.loja == perfil().loja
         && request.resource.data.foto is string && request.resource.data.foto.size() < 900000;
