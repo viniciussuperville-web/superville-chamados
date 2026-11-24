@@ -12,6 +12,10 @@
 <link rel="manifest" href="manifest.webmanifest">
 <title>Portal de Chamados | SuperVille</title>
 <link rel="icon" type="image/png" href="favicon.png">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <link rel="preload" href="fontes/montserrat-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fontes/montserrat-700.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -93,7 +97,6 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .btn-sec{background:#fff;border:1px solid #D1D5DB;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
 .btn-sec:hover{border-color:var(--verde)}
 .btn-link{background:none;border:0;color:var(--verde-esc);font-weight:700;cursor:pointer;padding:0;margin-bottom:8px}
-.busca-link{display:block;margin:-4px 0 12px;font-size:14px}
 .card-foto-placa{display:flex;flex-direction:column;gap:6px;background:#EAF7EF;border:2px solid #3BB072;border-radius:14px;padding:14px;margin:10px 0 14px}
 .card-foto-placa span{font-size:14px;color:#3d4a42}
 .foto-placa .foto.grande{width:100%;max-width:340px;height:auto;aspect-ratio:3/4}
@@ -116,8 +119,9 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .acoes-fixas{margin:0 -18px;padding:12px 18px calc(10px + env(safe-area-inset-bottom))}
 /* Escolhas em botões (no lugar das listas) */
 label[hidden]{display:none!important}
-.busca-nome{margin:6px 0}
-.busca-nome input{margin:0 0 6px}
+.busca-nome{margin:4px 0 14px;background:var(--verde-claro);border:1px solid #BFE5CE;border-radius:12px;padding:10px 12px}
+.busca-nome .bn-rot{display:block;font-weight:700;font-size:14px;color:var(--verde-esc);margin-bottom:6px}
+.busca-nome input{margin:0 0 6px;background:#fff}
 .res-nome{display:flex;flex-direction:column;gap:6px}
 .campo-sinal{display:flex;gap:6px;align-items:stretch;margin-top:5px}
 .campo-sinal input{flex:1;min-width:0;margin:0}
@@ -371,7 +375,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.24-5";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.24-6";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 15;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo) · fase de testes, pode mudar
 const PRAZO_NORMAL_H = 1;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente · fase de testes, pode mudar
 // Prazos antigos (chamados abertos antes de 24/11/2026 não guardavam o prazo): urgente 30 min, normal 2h
@@ -621,20 +625,28 @@ const semAcento = t => String(t || "").toLowerCase().normalize("NFD").replace(/[
 const Produtos = {
   mapa: new Map(), carregado: false, total: 0, exemplo: false,
   norm: c => String(c || "").replace(/\D/g, "").replace(/^0+/, ""),
+  carregando: false,
   async carregar() {
+    this.carregando = true;
     try { const r = await fetch(BASE_PRODUTOS, { cache: "no-cache" }); if (!r.ok) throw new Error(r.status); this.indexar(await r.text()); }
     catch (e) { if (Store.modo === "demo") { this.indexar(DEMO_CSV); this.exemplo = true; } }
     try { const r = await fetch(BASE_EXTRAS, { cache: "no-cache" }); if (r.ok) this.indexarExtras(await r.text()); } catch (e) {}
     // códigos que este celular já ligou a um produto pela busca por nome
     try { Object.entries(JSON.parse(localStorage.getItem("cs_ean_extras") || "{}")).forEach(([ean, cod]) => { const p = this.porCodigo(cod); if (p) this._add(ean, p); }); } catch (e) {}
+    this.carregando = false;
+    // a lista chegou depois de a pessoa já ter digitado: confere de novo o que está na tela
+    document.querySelectorAll("input[data-f=cod]").forEach(i => { if (i.value.trim()) infoCodigo(i); });
+    document.querySelectorAll("input[data-f=buscaNome]").forEach(i => { if (i.value.trim()) i.dispatchEvent(new Event("input", { bubbles: true })); });
   },
   porCodigo(cod) { const k = this.norm(cod); return (this.mapa.get(k) || []).find(x => this.norm(x.codigo) === k) || null; },
   // Busca pelo nome: todas as palavras precisam aparecer na descrição
   buscarNome(q) {
     const pal = semAcento(q).split(/\s+/).filter(w => w.length >= 2);
     if (!pal.length || pal.join("").length < 3) return [];
-    const r = []; for (const p of this.todos || []) { if (pal.every(w => p.busca.includes(w))) { r.push(p); if (r.length >= 8) break; } }
-    return r;
+    // primeiro os que começam com a palavra digitada (ARROZ… antes de LEGUMES P/ARROZ), depois os nomes mais curtos
+    const r = []; for (const p of this.todos || []) { if (pal.every(w => p.busca.includes(w))) { r.push(p); if (r.length >= 300) break; } }
+    const nota = p => (p.busca.startsWith(pal[0]) ? 0 : new RegExp("(^|[^a-z0-9])" + pal[0].replace(/[^a-z0-9]/g, "")).test(p.busca) ? 1 : 2);
+    return r.sort((x, y) => nota(x) - nota(y) || x.descricao.length - y.descricao.length).slice(0, 8);
   },
   lembrar(ean, cod) {
     const p = this.porCodigo(cod); if (!p || !this.norm(ean)) return;
@@ -687,13 +699,15 @@ const Produtos = {
 };
 
 // Mostra a descrição do produto assim que o código é digitado ou lido
-const buscaNomeHTML = () => `<div class="busca-nome"><input type="search" data-f="buscaNome" placeholder="Digite parte do nome. Ex.: azeite andorinha" autocomplete="off"><div class="res-nome"></div></div>`;
+const buscaNomeHTML = () => `<div class="busca-nome"><span class="bn-rot">🔎 Não sabe o código? Procure pelo nome</span><input type="search" data-f="buscaNome" enterkeyhint="search" placeholder="Ex.: azeite andorinha" autocomplete="off" autocorrect="off" spellcheck="false"><div class="res-nome"></div></div>`;
+const limparBuscaNome = item => { const b = item?.querySelector(".busca-nome"); if (b) { b.querySelector("input").value = ""; b.querySelector(".res-nome").innerHTML = ""; } };
 function infoCodigo(input) {
   const wrap = input.closest(".item, .cad-ean"), box = wrap.querySelector(".cod-info"), hid = wrap.querySelector("input[name=descricao][type=hidden]");
   const v = input.value.trim(), cadastro = wrap.classList.contains("cad-ean");
   if (hid) hid.value = "";
   delete input.dataset.ambig;
   if (!v) { box.innerHTML = ""; return; }
+  if (!Produtos.carregado && Produtos.carregando) { box.innerHTML = '<span class="ci-muted">Carregando a lista de produtos… um instante.</span>'; return; }
   if (!Produtos.carregado) { box.innerHTML = '<span class="ci-muted">Base de produtos indisponível — o escritório confere pelo código.</span>'; return; }
   const l = Produtos.buscarTodos(v);
   if (cadastro) {
@@ -708,9 +722,9 @@ function infoCodigo(input) {
     input.dataset.ambig = "1";
     box.innerHTML = `<span class="ci-warn">Mais de um produto com esse número. Toque no certo:</span>
       <div class="escolhas">${l.map(p => `<button type="button" class="escolha" data-act="escolherProd" data-cod="${esc(p.codigo)}"><b>${esc(p.codigo)}</b> ${esc(p.descricao)}</button>`).join("")}</div>`;
-  } else box.innerHTML = `<span class="ci-warn">Não achei esse código na lista do portal. Procure o produto pelo nome:</span>
-      ${buscaNomeHTML()}
-      <span class="ci-muted">Não achou? Pode abrir o chamado assim mesmo: o escritório confere pelo código.</span>`;
+  } else box.innerHTML = wrap.querySelector(".busca-nome")
+      ? `<span class="ci-warn">Não achei esse código. Procure o produto pelo nome logo abaixo.</span> <span class="ci-muted">Não achou? Pode abrir assim mesmo: o escritório confere pelo código.</span>`
+      : `<span class="ci-warn">Não achei esse código na lista do portal.</span> <span class="ci-muted">Pode abrir o chamado assim mesmo: o escritório confere pelo código.</span>`;
 }
 
 function carregarScript(src) {
@@ -850,8 +864,13 @@ const Store = {
     const base = "https://www.gstatic.com/firebasejs/10.12.2/";
     const [appM, authM, fsM] = await Promise.all([import(base + "firebase-app.js"), import(base + "firebase-auth.js"), import(base + "firebase-firestore.js")]);
     const app = appM.initializeApp(FIREBASE_CONFIG);
-    this._fb = { app, auth: authM.getAuth(app), db: fsM.getFirestore(app), A: authM, F: fsM };
+    this._fb = { app, auth: authM.getAuth(app), db: Store._abrirBanco(fsM, app), A: authM, F: fsM };
     this.modo = "firebase";
+  },
+
+  _abrirBanco(F, app) {
+    try { return F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
+    catch (e) { console.warn("cache local indisponível", e); return F.getFirestore(app); }
   },
 
   aoMudarSessao(cb) {
@@ -859,8 +878,16 @@ const Store = {
     const { auth, A, F, db } = this._fb;
     A.onAuthStateChanged(auth, async user => {
       if (!user) { this.perfil = null; cb(null); return; }
+      const ref = F.doc(db, "usuarios", user.uid), chave = p => JSON.stringify([p.perfil, p.loja || "", p.nome || "", p.cargo || ""]);
       try {
-        const s = await F.getDoc(F.doc(db, "usuarios", user.uid));
+        let rapido = null;
+        try { const c = await F.getDocFromCache(ref); if (c.exists()) rapido = { uid: user.uid, ...c.data() }; } catch (e) {}
+        if (rapido) {
+          this.perfil = rapido; cb(this.perfil);
+          F.getDocFromServer(ref).then(s => { if (!s.exists() || chave(s.data()) !== chave(rapido)) location.reload(); }).catch(() => {});
+          return;
+        }
+        const s = await F.getDoc(ref);
         if (!s.exists()) { toast("Usuário sem perfil cadastrado. Fale com o escritório.", "erro"); await A.signOut(auth); return; }
         this.perfil = { uid: user.uid, ...s.data() }; cb(this.perfil);
       } catch (e) { console.error(e); toast("Erro ao carregar o perfil.", "erro"); this.perfil = null; cb(null); }
@@ -1244,7 +1271,7 @@ function seguir(el) {
 const opts = (lista, sel) => lista.map(o => { const [v, n] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(n)}</option>`; }).join("");
 
 function campoCodigo(nome = "codigo", rotulo = "Código interno ou de barras") {
-  return `<label>${rotulo}<div class="cod-in"><input name="${nome}" required inputmode="numeric" autocomplete="off" data-f="cod" placeholder="Digite o código">${SCAN_OK ? `<button type="button" class="btn-scan" data-act="scan" aria-label="Ler código com a câmera">${ICONES.scan}</button>` : ""}</div></label><div class="cod-info"></div>${nome === "codigo" ? `<button type="button" class="btn-link busca-link" data-act="abrirBuscaNome">🔎 Não sabe o código? Procure pelo nome</button>` : ""}`;
+  return `<label>${rotulo}<div class="cod-in"><input name="${nome}" required inputmode="numeric" autocomplete="off" data-f="cod" placeholder="Digite o código">${SCAN_OK ? `<button type="button" class="btn-scan" data-act="scan" aria-label="Ler código com a câmera">${ICONES.scan}</button>` : ""}</div></label><div class="cod-info"></div>${nome === "codigo" ? buscaNomeHTML() : ""}`;
 }
 const qtdHTML = (nome, rot, req) => `<label>${rot}<div class="stepper"><button type="button" data-act="menos" aria-label="Menos">−</button><input name="${nome}" type="number" min="1" step="1" value="1" inputmode="numeric" ${req ? "required" : "disabled"}><button type="button" data-act="mais" aria-label="Mais">+</button></div></label>`;
 function itemHTML(tipo) {
@@ -1706,7 +1733,7 @@ function vDetalhe(p) {
 
 // Placa de oferta entregue: quem abriu registra a foto da placa já colocada na loja (fecha o circuito)
 const pedeFotoPlaca = p => p.tipo === "placa" && p.status === "concluido" && !p.placaColocadaEm && (p.concluidoEm || 0) > DATA_FOTO_PLACA;
-const DATA_FOTO_PLACA = new Date(2026, 10, 24).getTime();   // vale para placas entregues a partir de 24/11/2026
+const DATA_FOTO_PLACA = new Date("2026-11-24T17:10:00-03:00").getTime();   // só placas entregues a partir de 24/11/2026 17h10 (as anteriores não pedem foto)
 function fotoPlacaHTML(p) {
   if (p.tipo !== "placa") return "";
   if (p.placaColocadaEm) return `<div class="sec-tit">📸 Placa colocada</div>
@@ -2038,18 +2065,14 @@ document.addEventListener("click", e => {
       if (document.querySelectorAll("#itens .item").length > 1) el.closest(".item").remove();
       else toast("O chamado precisa de pelo menos um produto."); break;
     case "escolherProd": { const inp = el.closest(".item").querySelector("input[data-f=cod]"); inp.value = el.dataset.cod; infoCodigo(inp); break; }
-    case "abrirBuscaNome": {
-      const box = el.closest(".item").querySelector(".cod-info");
-      if (!box.querySelector(".busca-nome")) box.insertAdjacentHTML("beforeend", buscaNomeHTML());
-      box.querySelector(".busca-nome input").focus(); el.hidden = true; break; }
     case "escolherNome": {
       const item = el.closest(".item"), inp = item.querySelector("input[data-f=cod]"), lido = inp.value.trim();
       // escolheu pelo nome sem ter digitado um código (ou com um código que já existe): só preenche o produto
-      if (!Produtos.norm(lido) || Produtos.buscarTodos(lido).length) { inp.value = el.dataset.cod; infoCodigo(inp); limparFalta(inp); const lk = item.querySelector(".busca-link"); if (lk) lk.hidden = false; break; }
+      if (!Produtos.norm(lido) || Produtos.buscarTodos(lido).length) { inp.value = el.dataset.cod; infoCodigo(inp); limparFalta(inp); limparBuscaNome(item); seguir(inp); break; }
       // guarda o código de barras que a loja leu: o escritório vê e ele passa a ser reconhecido neste celular
       let h = item.querySelector("input[name=eanLido]"); if (!h) { h = document.createElement("input"); h.type = "hidden"; h.name = "eanLido"; item.appendChild(h); }
       h.value = lido; Produtos.lembrar(lido, el.dataset.cod);
-      inp.value = el.dataset.cod; infoCodigo(inp);
+      inp.value = el.dataset.cod; infoCodigo(inp); limparFalta(inp); limparBuscaNome(item);
       item.querySelector(".cod-info").insertAdjacentHTML("beforeend", `<div class="ci-muted">Código ${esc(lido)} ligado a este produto.</div>`);
       break; }
     case "scan": escanear(el.closest(".cod-in").querySelector("input")); break;
@@ -2120,7 +2143,7 @@ document.addEventListener("input", e => {
   if (e.target.dataset?.f === "cod") { const h = e.target.closest(".item")?.querySelector("input[name=eanLido]"); if (h) h.value = ""; infoCodigo(e.target); return; }
   if (e.target.dataset?.f === "buscaNome") {
     const l = Produtos.buscarNome(e.target.value), box = e.target.nextElementSibling;
-    box.innerHTML = !e.target.value.trim() ? "" : l.length
+    box.innerHTML = !e.target.value.trim() ? "" : !Produtos.carregado ? `<span class="ci-muted">${Produtos.carregando ? "Carregando a lista de produtos… um instante." : "Lista de produtos indisponível agora."}</span>` : l.length
       ? l.map(p => `<button type="button" class="escolha" data-act="escolherNome" data-cod="${esc(p.codigo)}"><b>${esc(p.codigo)}</b> ${esc(p.descricao)}</button>`).join("")
       : `<span class="ci-muted">Nenhum produto com esse nome.</span>`;
     return;
@@ -2142,6 +2165,12 @@ document.addEventListener("submit", e => {
   if (e.target.id === "fPessoa") { e.preventDefault(); salvarIdentificacao(e.target); }
   if (e.target.id === "fSug") { e.preventDefault(); enviarSugestao(e.target); }
 });
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.dataset?.f === "buscaNome") {
+    e.preventDefault(); e.target.blur();
+    const r = e.target.nextElementSibling.querySelectorAll(".escolha"); if (r.length === 1) r[0].click();
+  }
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#dlg").hidden && aberto) fecharDetalhe(); });
 window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v4" && Store.modo === "demo") Store._avisar(); });
 // Escritório: chamado URGENTE apita a cada 15s até alguém assumir (com o portal minimizado, repete o aviso do sistema)
@@ -2162,10 +2191,11 @@ setInterval(() => { if (Store.perfil && !aberto && $("#dlg").hidden) refrescar()
 
 /* ---------- início ---------- */
 (async () => {
+  // a lista de produtos (2 MB) carrega em paralelo e não segura a abertura do portal
+  const prod = Produtos.carregar();
   try { await Store.iniciar(); }
   catch (e) { console.error(e); Store.modo = "demo"; toast("Não foi possível conectar ao Firebase. Abrindo em modo demonstração.", "erro"); }
-  if (Store.modo === "demo") demoSemear();
-  await Produtos.carregar();
+  if (Store.modo === "demo") { demoSemear(); await prod; }
   Store.aoMudarSessao(perfil => { esconderSplash(); perfil ? iniciarSessao() : renderLogin(); });
 })();
 </script>
