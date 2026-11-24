@@ -371,7 +371,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.24-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.24-2";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 15;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo) · fase de testes, pode mudar
 const PRAZO_NORMAL_H = 1;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente · fase de testes, pode mudar
 // Prazos antigos (chamados abertos antes de 24/11/2026 não guardavam o prazo): urgente 30 min, normal 2h
@@ -381,6 +381,8 @@ const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o cham
 // Aviso no celular com o portal FECHADO (push). Cole aqui a chave pública "Web Push" do Firebase
 // (Configurações do projeto › Cloud Messaging › Certificados push da Web). Vazia = só avisa com o portal aberto/minimizado.
 const VAPID_KEY = "";
+// Endereço do serviço gratuito de avisos (Google Apps Script, pasta avisos-gratis). Vazio = desligado.
+const AVISOS_URL = "";
 const LOJAS_REDE = ["Vila Romana", "Vila Leopoldina", "Santo Amaro", "Pio XI"]; // sugestões de destinatário da NF
 const BASE_PRODUTOS = "produtos.csv";                  // base de produtos (código interno, código de barras, descrição) na mesma pasta
 const BASE_EXTRAS = "codigos-extras.csv";             // códigos de barras adicionais de um mesmo produto (codigo;ean), ex.: importado e nacional
@@ -1408,6 +1410,7 @@ async function enviarNovo(form) {
     criadoEm: agora, atualizadoEm: agora };
   try {
     const r = await Store.criarPedido(p);
+    avisarServidor(r.id, "novo");
     toast(`Chamado ${num4(r.numero)} aberto`, "ok");
     enviado = { numero: r.numero, prazo: prazoMs({ ...p, criadoEm: agora }), tipo: novoTipo };
     novoTipo = null; novoFotos = []; aba = "novo"; resetFiltros(); render(); window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1788,12 +1791,12 @@ async function executar(acao, p) {
         if (!dono && !G) return negar("Só quem assumiu o chamado pode resolver.");
         o = await dialogo({ titulo: "Resolvido e entregue", texto: `Chamado ${num4(p.numero)} será registrado como resolvido por ${P.nome}. Para quem foi entregue na loja? (Se foi só ajuste no sistema, escreva "sistema".)`, placeholder: "Ex.: entregue ao encarregado da mercearia", obrigatorio: true, botao: "Confirmar" });
         if (o === null) return;
-        await Store.atualizar(p.id, { status: "concluido", concluidoEm: Date.now(), entreguePara: o, resolvidoPor: P.nome }, "Resolvido e entregue", o); break;
+        await Store.atualizar(p.id, { status: "concluido", concluidoEm: Date.now(), entreguePara: o, resolvidoPor: P.nome }, "Resolvido e entregue", o); avisarServidor(p.id, "resolvido"); break;
       case "contestar":
         o = await dialogo({ titulo: "Não recebi / não resolveu", texto: `O chamado volta para ${p.responsavelNome || "o escritório"}. Conte o que aconteceu.`, placeholder: "Ex.: placas não chegaram na loja", obrigatorio: true, botao: "Reabrir chamado", perigo: true });
         if (o === null) return;
         await Store.atualizar(p.id, { status: p.responsavelUid ? "andamento" : "aberto", concluidoEm: null, entreguePara: null, contestado: true,
-          reabertoEm: Date.now(), reabertoPorNome: quemSou() || "", reabertoPorDispositivo: Pessoa.ler()?.id || "", reabertoPorToken: PUSH_TOKEN, motivoReabertura: o }, "Loja reabriu: não recebeu / não resolveu", o); break;
+          reabertoEm: Date.now(), reabertoPorNome: quemSou() || "", reabertoPorDispositivo: Pessoa.ler()?.id || "", reabertoPorToken: PUSH_TOKEN, motivoReabertura: o }, "Loja reabriu: não recebeu / não resolveu", o); avisarServidor(p.id, "reaberto"); break;
       case "cancelar":
         if (isEsc() && !dono && !G) return negar("Só quem assumiu o chamado pode cancelar.");
         o = await dialogo({ titulo: "Cancelar chamado", texto: "Informe o motivo do cancelamento.", placeholder: "Motivo", obrigatorio: true, botao: "Cancelar chamado", perigo: true });
@@ -1946,6 +1949,14 @@ function onPedidos(lista) {
 }
 
 /* ---------- aviso com o portal fechado (push do Firebase) ---------- */
+// Pede ao serviço de avisos (Apps Script) para mandar o push: chamado novo, resolvido ou reaberto
+async function avisarServidor(id, evento) {
+  if (!AVISOS_URL || Store.modo !== "firebase" || !id) return;
+  try {
+    const idToken = await Store._fb.auth.currentUser?.getIdToken();
+    await fetch(AVISOS_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ idToken, id, evento }) });
+  } catch (e) { console.warn("avisos:", e); }
+}
 let PUSH_TOKEN = "";
 async function registrarPush() {
   if (!VAPID_KEY || Store.modo !== "firebase" || !("Notification" in window) || Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;

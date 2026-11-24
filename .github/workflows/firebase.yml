@@ -1,11 +1,11 @@
-# Publica no Firebase as regras do banco (firestore.rules) e a função de avisos (functions/)
+# Publica no Firebase as regras do banco (firestore.rules)
 # sempre que um desses arquivos mudar. Precisa do segredo FIREBASE_SERVICE_ACCOUNT no GitHub
 # (Settings › Secrets and variables › Actions). Sem o segredo, não faz nada.
 name: Publicar no Firebase
 on:
   push:
     branches: [main]
-    paths: ["firestore.rules", "functions/**", "firebase.json", ".github/workflows/firebase.yml"]
+    paths: ["firestore.rules", "firebase.json", ".github/workflows/firebase.yml"]
   workflow_dispatch:
 
 jobs:
@@ -23,8 +23,3 @@ jobs:
       - name: Regras do banco
         if: env.SA != ''
         run: npx -y firebase-tools@13 deploy --only firestore:rules --project superville-chamados --non-interactive
-      - name: Função de avisos (precisa do plano Blaze)
-        if: env.SA != ''
-        run: |
-          cd functions && npm install --omit=dev && cd ..
-          npx -y firebase-tools@13 deploy --only functions --project superville-chamados --non-interactive --force
