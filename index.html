@@ -54,6 +54,7 @@ header .logo + .h-tit{border-left:1px solid rgba(255,255,255,.22);padding-left:1
 @media(max-width:340px){header .logo{height:34px}.h-tit b{font-size:13px}.btn-sair{padding:5px 7px;font-size:11px}header .logo + .h-tit{padding-left:8px}header{gap:8px}}
 .btn-sair{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
 nav.abas{background:#fff;border-bottom:1px solid var(--borda);display:flex;gap:4px;padding:0 12px;overflow-x:auto}
+@media(max-width:430px){.aba{padding:14px 7px!important;font-size:14px}}
 .aba{background:none;border:0;padding:14px 12px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
 .aba.on{color:var(--txt);border-bottom-color:var(--verde)}
 .badge{background:var(--verde);color:#fff;border-radius:999px;font-size:11px;padding:2px 7px;font-weight:700}
@@ -92,6 +93,16 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .btn-sec{background:#fff;border:1px solid #D1D5DB;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
 .btn-sec:hover{border-color:var(--verde)}
 .btn-link{background:none;border:0;color:var(--verde-esc);font-weight:700;cursor:pointer;padding:0;margin-bottom:8px}
+.busca-link{display:block;margin:-4px 0 12px;font-size:14px}
+.card-foto-placa{display:flex;flex-direction:column;gap:6px;background:#EAF7EF;border:2px solid #3BB072;border-radius:14px;padding:14px;margin:10px 0 14px}
+.card-foto-placa span{font-size:14px;color:#3d4a42}
+.foto-placa .foto.grande{width:100%;max-width:340px;height:auto;aspect-ratio:3/4}
+.foto-placa .foto.grande img{width:100%;height:100%;object-fit:cover}
+.tag.ok{--c:#0A5C40}
+.tag.foto{--c:#B45309}
+.sug-card{display:flex;flex-direction:column;gap:6px;border:1px solid var(--borda,#E2E4DF);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+.sug-card.lida{opacity:.65}
+.sug-card small{color:#5d6660}
 .btn-full{width:100%}
 .form-acts{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 16px}
 .farol{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
@@ -360,24 +371,29 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.20-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
-const PRAZO_URGENTE_MIN = 30;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo)
-const PRAZO_NORMAL_H = 2;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente
+const VERSAO_APP = "2026.11.24-1";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const PRAZO_URGENTE_MIN = 15;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo) · fase de testes, pode mudar
+const PRAZO_NORMAL_H = 1;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente · fase de testes, pode mudar
+// Prazos antigos (chamados abertos antes de 24/11/2026 não guardavam o prazo): urgente 30 min, normal 2h
+const PRAZO_LEGADO = { urgenteMin: 30, normalMin: 120 };
 const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o chamado precisa ser resolvido no mesmo dia, até o fechamento
 
+// Aviso no celular com o portal FECHADO (push). Cole aqui a chave pública "Web Push" do Firebase
+// (Configurações do projeto › Cloud Messaging › Certificados push da Web). Vazia = só avisa com o portal aberto/minimizado.
+const VAPID_KEY = "";
 const LOJAS_REDE = ["Vila Romana", "Vila Leopoldina", "Santo Amaro", "Pio XI"]; // sugestões de destinatário da NF
 const BASE_PRODUTOS = "produtos.csv";                  // base de produtos (código interno, código de barras, descrição) na mesma pasta
 const BASE_EXTRAS = "codigos-extras.csv";             // códigos de barras adicionais de um mesmo produto (codigo;ean), ex.: importado e nacional
 
-// Tipos de chamado. sla = prazo do escritório em horas (normal: 2h, sempre até o fechamento da loja). imediato = sempre urgente.
+// Tipos de chamado. sla = prazo do escritório em horas (normal, sempre até o fechamento da loja). imediato = sempre urgente, desde a abertura.
 const TIPOS = {
-  placa:     { nome: "Placa de oferta",        curto: "Placa",     sla: 2,  cor: "#3BB072", desc: "Placas e cartazes de oferta para a loja" },
-  caixa:     { nome: "Carga para os caixas",   curto: "Carga PDV", sla: 2,  cor: "#EA580C", desc: "Mandar carga avulsa de produto para os caixas (pode pedir placa junto)" },
-  balanca:   { nome: "Carga para balanças",    curto: "Balança",   sla: 2,  cor: "#0891B2", desc: "Produto que não está entrando na balança" },
-  cadastro:  { nome: "Produto sem cadastro",   curto: "Cadastro",  sla: 2, cor: "#2563EB", desc: "Produto que não passa no caixa: envie rótulo e código de barras" },
-  ajuste:    { nome: "Ajuste de estoque",      curto: "Ajuste",    sla: 2, cor: "#B45309", desc: "Estoque do sistema diferente do físico na loja" },
+  placa:     { nome: "Placa de oferta",        curto: "Placa",     sla: 1,  cor: "#3BB072", desc: "Placas e cartazes de oferta para a loja" },
+  caixa:     { nome: "Carga para os caixas",   curto: "Carga PDV", sla: 0,  cor: "#EA580C", desc: "Mandar carga avulsa de produto para os caixas (pode pedir placa junto)", imediato: true },
+  balanca:   { nome: "Carga para balanças",    curto: "Balança",   sla: 0,  cor: "#0891B2", desc: "Produto que não está entrando na balança", imediato: true },
+  cadastro:  { nome: "Produto sem cadastro",   curto: "Cadastro",  sla: 0, cor: "#2563EB", desc: "Produto que não passa no caixa: envie rótulo e código de barras", imediato: true },
+  ajuste:    { nome: "Ajuste de estoque",      curto: "Ajuste",    sla: 0, cor: "#B45309", desc: "Estoque do sistema diferente do físico na loja", imediato: true },
   nfe:       { nome: "Emissão de nota fiscal", curto: "Emitir NF", sla: 0,  cor: "#0D9488", desc: "Nota para transferência, remessa ou outro destinatário", imediato: true },
-  devolucao: { nome: "NF de devolução",        curto: "Devolução", sla: 2, cor: "#8B5CF6", desc: "Devolução ao fornecedor: avaria, vencido, divergência" }
+  devolucao: { nome: "NF de devolução",        curto: "Devolução", sla: 0, cor: "#8B5CF6", desc: "Devolução ao fornecedor: avaria, vencido, divergência", imediato: true }
 };
 
 const CARGOS_LOJA = ["Encarregado", "Apoio", "Gerente"];   // quem pode abrir chamado pela conta da loja
@@ -392,7 +408,7 @@ async function senhaGerenteOk(txt) {
   return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("") === SENHA_GERENTE_SHA256;
 }
 const SETORES = ["Mercearia", "Açougue", "Hortifruti", "Padaria", "Frios e Laticínios", "Bebidas", "Limpeza e Higiene", "Frente de caixa", "Depósito", "Pães e Bolos", "Cereais (Potinhos)", "Outro"];
-const MODELOS = ["Oferta", "Clube Fidelidade", "Cashback"];
+const MODELOS = ["Oferta", "Clube Fidelidade", "Cashback", "Aproveite (placa de destaque)"];
 const TAMANHOS = [["A4", "A4 (1 por folha)"], ["A5", "A5 (2 por folha)"], ["A6", "A6 (4 por folha)"]];
 // Balanças de cada loja, com a mesma numeração do sistema de carga (tela "Solicitar Carga das Balanças").
 const BALANCAS = {
@@ -459,25 +475,26 @@ const desde = ms => "há " + fmtDur(Date.now() - ms);
 const numero = v => { let s = String(v ?? "").trim(); if (!s) return NaN; if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); return parseFloat(s); };
 const brl = v => { const n = numero(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); };
 const num4 = n => "#" + String(n || 0).padStart(4, "0");
-const slaTxt = t => t.imediato ? `imediato (${PRAZO_URGENTE_MIN} min)` : `${t.sla || PRAZO_NORMAL_H}h, até as ${LOJA_FECHA_H}h`;
+const slaTxt = t => t.imediato ? `urgente (${PRAZO_URGENTE_MIN} min)` : `${t.sla || PRAZO_NORMAL_H}h, até as ${LOJA_FECHA_H}h`;
 // Início da contagem: dentro do horário da loja (antes das 7h conta das 7h; depois das 21h conta das 7h do dia seguinte)
 const inicioPrazo = ms => { const d = new Date(ms), h = d.getHours();
   if (h < LOJA_ABRE_H) d.setHours(LOJA_ABRE_H, 0, 0, 0);
   else if (h >= LOJA_FECHA_H) { d.setDate(d.getDate() + 1); d.setHours(LOJA_ABRE_H, 0, 0, 0); }
   return d.getTime(); };
-// Prazo: urgente 30 min, normal 2h; nunca passa do fechamento da loja (21h) do mesmo dia
+// Prazo: o chamado guarda o prazo em minutos na abertura (prazoMin); nunca passa do fechamento da loja (21h) do mesmo dia
 const prazoMs = p => { const ini = inicioPrazo(p.criadoEm), fecha = new Date(ini).setHours(LOJA_FECHA_H, 0, 0, 0);
-  const dur = p.prioridade === "urgente" ? PRAZO_URGENTE_MIN * 60000 : (TIPOS[p.tipo]?.sla || PRAZO_NORMAL_H) * 3600000;
+  const min = p.prazoMin || (p.prioridade === "urgente" ? PRAZO_LEGADO.urgenteMin : PRAZO_LEGADO.normalMin);
+  const dur = min * 60000;
   return Math.min(ini + dur, fecha); };
 const atrasado = p => (p.status === "aberto" || p.status === "andamento") && Date.now() > prazoMs(p);
-// Passou do prazo (2h ou fechamento da loja) sem resolver: vira urgente
+// Passou do prazo (ou do fechamento da loja) sem resolver: vira urgente
 const virouUrgente = p => p.prioridade !== "urgente" && atrasado(p);
 const ehUrgente = p => p.prioridade === "urgente" || virouUrgente(p);
 const fimResolucao = p => p.concluidoEm || null;
 const noPrazo = p => { const f = fimResolucao(p); return f ? f <= prazoMs(p) : false; };
 const totalPlacas = p => (p.dados?.itens || []).reduce((s, i) => s + (p.tipo === "placa" ? (parseInt(i.qtd) || 1) : i.placa ? (parseInt(i.qtdPlaca) || 1) : 0), 0);
 const balancasLoja = () => BALANCAS[Store.perfil?.loja] || ["01", "02", "03", "04"];
-const tagPrio = p => virouUrgente(p) ? `<span class="tag urg">Virou urgente</span>` : p.prioridade !== "urgente" ? "" : `<span class="tag urg">${TIPOS[p.tipo]?.imediato ? "Imediata" : "Urgente"}</span>`;
+const tagPrio = p => virouUrgente(p) ? `<span class="tag urg">Virou urgente</span>` : p.prioridade !== "urgente" ? "" : `<span class="tag urg">Urgente</span>`;
 const fmtQtd = n => isNaN(n) ? "—" : n.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 const difAjuste = i => numero(i.fisico) - numero(i.sistema);
 const nomeItem = i => i.descricao || "Cód. " + (i.codigo || "?");
@@ -665,6 +682,7 @@ const Produtos = {
 };
 
 // Mostra a descrição do produto assim que o código é digitado ou lido
+const buscaNomeHTML = () => `<div class="busca-nome"><input type="search" data-f="buscaNome" placeholder="Digite parte do nome. Ex.: azeite andorinha" autocomplete="off"><div class="res-nome"></div></div>`;
 function infoCodigo(input) {
   const wrap = input.closest(".item, .cad-ean"), box = wrap.querySelector(".cod-info"), hid = wrap.querySelector("input[name=descricao][type=hidden]");
   const v = input.value.trim(), cadastro = wrap.classList.contains("cad-ean");
@@ -686,7 +704,7 @@ function infoCodigo(input) {
     box.innerHTML = `<span class="ci-warn">Mais de um produto com esse número. Toque no certo:</span>
       <div class="escolhas">${l.map(p => `<button type="button" class="escolha" data-act="escolherProd" data-cod="${esc(p.codigo)}"><b>${esc(p.codigo)}</b> ${esc(p.descricao)}</button>`).join("")}</div>`;
   } else box.innerHTML = `<span class="ci-warn">Não achei esse código na lista do portal. Procure o produto pelo nome:</span>
-      <div class="busca-nome"><input type="search" data-f="buscaNome" placeholder="Ex.: hofbrau weiss" autocomplete="off"><div class="res-nome"></div></div>
+      ${buscaNomeHTML()}
       <span class="ci-muted">Não achou? Pode abrir o chamado assim mesmo: o escritório confere pelo código.</span>`;
 }
 
@@ -787,6 +805,7 @@ function demoLer() {
   try { const s = localStorage.getItem("cs_demo_chamados_v4"); return s ? JSON.parse(s) : []; }
   catch (e) { demoMem = []; return demoMem; }
 }
+function demoObj(k, vazio = {}) { try { return JSON.parse(localStorage.getItem(k) || "null") || vazio; } catch (e) { return vazio; } }
 function demoSalvar(l) {
   try { localStorage.setItem("cs_demo_chamados_v4", JSON.stringify(l)); demoMem = null; }
   catch (e) { demoMem = l; toast("Armazenamento do navegador cheio — os dados da demonstração ficarão só nesta aba.", "erro"); }
@@ -826,7 +845,7 @@ const Store = {
     const base = "https://www.gstatic.com/firebasejs/10.12.2/";
     const [appM, authM, fsM] = await Promise.all([import(base + "firebase-app.js"), import(base + "firebase-auth.js"), import(base + "firebase-firestore.js")]);
     const app = appM.initializeApp(FIREBASE_CONFIG);
-    this._fb = { auth: authM.getAuth(app), db: fsM.getFirestore(app), A: authM, F: fsM };
+    this._fb = { app, auth: authM.getAuth(app), db: fsM.getFirestore(app), A: authM, F: fsM };
     this.modo = "firebase";
   },
 
@@ -892,6 +911,47 @@ const Store = {
     return { id: ref.id, numero: n };
   },
 
+  // Fotos grandes (ex.: placa colocada) ficam FORA do chamado, na coleção "anexos": a lista de chamados
+  // continua leve e a foto só é baixada quando alguém abre aquele chamado.
+  async salvarAnexo(p, chave, foto) {
+    const id = p.id + "_" + chave, d = { chamadoId: p.id, loja: p.loja, chave, foto, criadoEm: Date.now(), por: quemSou() || Store.perfil?.nome || "" };
+    if (this.modo === "demo") {
+      const m = demoObj("cs_demo_anexos"); m[id] = d;
+      try { localStorage.setItem("cs_demo_anexos", JSON.stringify(m)); } catch (e) { throw new Error("Sem espaço neste navegador para a foto (modo demonstração)."); }
+      return "anexo";
+    }
+    const { db, F } = this._fb;
+    try { await F.setDoc(F.doc(db, "anexos", id), d); return "anexo"; }
+    catch (e) { if (e.code === "permission-denied") return "inline"; throw e; }   // regras novas ainda não publicadas: guarda no chamado
+  },
+  async lerAnexo(p, chave) {
+    if (chave === "placa" && p.fotoPlacaInline) return p.fotoPlacaInline;
+    const id = p.id + "_" + chave;
+    if (this.modo === "demo") return demoObj("cs_demo_anexos")[id]?.foto || null;
+    const { db, F } = this._fb; const s = await F.getDoc(F.doc(db, "anexos", id)); return s.exists() ? s.data().foto : null;
+  },
+
+  async enviarSugestao(sg) {
+    if (this.modo === "demo") { const l = demoObj("cs_demo_sugestoes", []); l.push({ ...sg, id: "S" + Date.now() }); localStorage.setItem("cs_demo_sugestoes", JSON.stringify(l)); return; }
+    const { db, F } = this._fb; await F.addDoc(F.collection(db, "sugestoes"), sg);
+  },
+  async listarSugestoes() {
+    if (this.modo === "demo") return demoObj("cs_demo_sugestoes", []).slice().sort((a, b) => b.criadoEm - a.criadoEm);
+    const { db, F } = this._fb;
+    const s = await F.getDocs(F.query(F.collection(db, "sugestoes"), F.orderBy("criadoEm", "desc"), F.limit(200)));
+    return s.docs.map(d => ({ id: d.id, ...d.data() }));
+  },
+  async marcarSugestao(id, patch) {
+    if (this.modo === "demo") { const l = demoObj("cs_demo_sugestoes", []); Object.assign(l.find(x => x.id === id) || {}, patch); localStorage.setItem("cs_demo_sugestoes", JSON.stringify(l)); return; }
+    const { db, F } = this._fb; await F.updateDoc(F.doc(db, "sugestoes", id), patch);
+  },
+  // Endereço de push deste aparelho (para avisar com o portal fechado)
+  async salvarToken(token, extra) {
+    if (this.modo !== "firebase") return;
+    const { db, F } = this._fb; const P = this.perfil;
+    await F.setDoc(F.doc(db, "tokens", token), { token, uid: P.uid, perfil: P.perfil, loja: P.loja || "", nome: extra.nome || P.nome || "", dispositivoId: extra.dispositivoId || "", atualizadoEm: Date.now() });
+  },
+
   async atualizar(id, patch, acao, obs) {
     const h = { em: Date.now(), por: quemSou(), acao }; if (obs) h.obs = obs;
     patch = { ...patch, atualizadoEm: Date.now() };
@@ -931,6 +991,47 @@ function textoBusca(p) {
     ...(d.itens || []).flatMap(i => [i.codigo, i.descricao])].join(" ").toLowerCase();
 }
 
+/* ---------- sugestões: quem usa o portal manda ideias ou o que está atrapalhando ---------- */
+const TIPOS_SUG = ["Melhoria no portal", "Algo atrapalhando meu trabalho", "Ideia para a loja", "Outro"];
+let SUGS = null, sugEnviada = false;
+function carregarSugestoes() {
+  if (!isGestor()) return;
+  Store.listarSugestoes().then(l => { SUGS = l; if (aba === "sugestoes") render(); else montarTopo(); })
+    .catch(e => { console.error(e); SUGS = { erro: e.code || e.message }; if (aba === "sugestoes") render(); });
+}
+function vSugestoes() {
+  if (isGestor() && SUGS === null) { SUGS = []; carregarSugestoes(); }
+  const form = sugEnviada
+    ? `<section class="card ok-card"><div class="ok-ico">✓</div><h2>Sugestão enviada!</h2><p class="muted" style="font-size:15px">Obrigado! Toda sugestão é lida.</p><button class="btn-sec" data-act="novaSug">Enviar outra</button></section>`
+    : `<form id="fSug" class="card" novalidate>
+      <h2>💡 Sugestões</h2>
+      <p class="muted">Tem uma ideia para melhorar o portal, ou alguma coisa está atrapalhando o seu trabalho? Conte aqui. Quem lê é o Vinicius.</p>
+      <label>Sobre o quê?<select name="tipo" required><option value="">Selecione</option>${opts(TIPOS_SUG)}</select></label>
+      <label>Sua sugestão<textarea name="texto" rows="5" required placeholder="Escreva do seu jeito. Ex.: seria bom pedir placa e carga no mesmo chamado"></textarea></label>
+      <div class="barra-fixa"><button class="btn btn-full" type="submit">Enviar sugestão</button></div>
+    </form>`;
+  if (!isGestor()) return form;
+  const l = Array.isArray(SUGS) ? SUGS : [];
+  const lista = SUGS?.erro ? `<div class="banner neutro">Não foi possível carregar as sugestões (${esc(SUGS.erro)}). Confira se as regras novas do banco foram publicadas.</div>`
+    : !l.length ? `<div class="vazio">Nenhuma sugestão ainda.</div>`
+    : l.map(x => `<div class="sug-card ${x.lida ? "lida" : ""}"><div><span class="tag" style="--c:#0A5C40">${esc(x.tipo)}</span>${x.lida ? ' <span class="tag" style="--c:#8A8F8C">Lida</span>' : ""}</div>
+        <p style="margin:0;white-space:pre-wrap">${esc(x.texto)}</p>
+        <small>${esc(x.nome)}${x.cargo ? " · " + esc(x.cargo) : ""} · ${esc(x.loja || "")} · ${fmtData(x.criadoEm)}</small>
+        ${x.lida ? "" : `<button class="btn-sec" data-act="lerSug" data-id="${esc(x.id)}" style="align-self:flex-start">Marcar como lida</button>`}</div>`).join("");
+  return `${form}<h2 style="margin:18px 4px 10px">Sugestões recebidas</h2>${lista}`;
+}
+async function enviarSugestao(form) {
+  if (!validar(form)) return;
+  const P = Store.perfil, eu = ehLoja() ? Pessoa.ler() : null, b = form.querySelector("[type=submit]");
+  const texto = form.texto.value.trim();
+  if (texto.length < 5) { toast("Escreva um pouco mais sobre a sua sugestão.", "erro"); form.texto.focus(); return; }
+  b.disabled = true; b.textContent = "Enviando…";
+  try {
+    await Store.enviarSugestao({ tipo: form.tipo.value, texto, nome: eu?.nome || P.nome || "", cargo: eu?.cargo || P.cargo || "", loja: P.loja || "Escritório", uid: P.uid, dispositivoId: eu?.id || "", criadoEm: Date.now(), lida: false });
+    sugEnviada = true; if (isGestor()) carregarSugestoes(); render();
+  } catch (e) { console.error(e); toast(e.code === "permission-denied" ? "As sugestões ainda estão sendo liberadas no sistema. Tente de novo mais tarde." : "Erro ao enviar: " + (e.code || e.message), "erro"); b.disabled = false; b.textContent = "Enviar sugestão"; }
+}
+
 /* ---------- topo e abas ---------- */
 function montarTopo() {
   const P = Store.perfil, t = $("#topo");
@@ -938,8 +1039,8 @@ function montarTopo() {
   t.hidden = false;
   const E = isEsc();
   const abas = E
-    ? [["fila", "Fila", cnt("aberto")], ...(isGestor() ? [["painel", "Painel", 0]] : [])]
-    : [["novo", "Novo chamado", 0], ["meus", "Meus chamados", PEDIDOS.filter(p => ATIVOS.includes(p.status) && ehMeu(p)).length]];
+    ? [["fila", "Fila", cnt("aberto")], ...(isGestor() ? [["painel", "Painel", 0]] : []), ["sugestoes", "💡 Sugestões", isGestor() && Array.isArray(SUGS) ? SUGS.filter(x => !x.lida).length : 0]]
+    : [["novo", "Novo chamado", 0], ["meus", "Meus chamados", PEDIDOS.filter(p => ATIVOS.includes(p.status) && ehMeu(p)).length], ["sugestoes", "💡 Sugestões", 0]];
   t.innerHTML = `<header>${logoHTML()}
     <div class="h-tit"><b>Portal de Chamados</b><small>${isGestor() ? "Gestor · acesso total" : E ? "Escritório" : "Loja " + esc(P.loja)}${Store.modo === "demo" ? " · modo demonstração" : ""}</small></div>
     <div class="h-user">${ehLoja() && Pessoa.ler() ? `<b>${esc(Pessoa.ler().nome)}</b>${esc(Pessoa.ler().cargo)}` : `<b>${esc(P.nome)}</b>${esc(P.cargo || "")}`}</div>
@@ -992,15 +1093,16 @@ function render() {
   if (!Store.perfil) return;
   montarTopo();
   if (aba === "painel" && !isGestor()) aba = "fila";
-  const v = { novo: vNovo, meus: vMeus, fila: vFila, painel: vPainel }[aba] || vNovo;
+  const v = { novo: vNovo, meus: vMeus, fila: vFila, painel: vPainel, sugestoes: vSugestoes }[aba] || vNovo;
   $("#app").innerHTML = v();
   if (aba === "novo" && novoTipo) { renderFotos(); chipify(); }
+  if (aba === "sugestoes") chipify();
 }
 
 // Atualiza a tela sem atrapalhar quem está digitando
 function refrescar() {
   montarTopo();
-  if (aba === "novo") return;
+  if (aba === "novo" || aba === "sugestoes") return;
   const ae = document.activeElement;
   if (ae && ae.dataset && ae.dataset.f === "busca" && $("#lista")) { $("#lista").innerHTML = listaHTML(); return; }
   render();
@@ -1136,7 +1238,7 @@ function seguir(el) {
 const opts = (lista, sel) => lista.map(o => { const [v, n] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(n)}</option>`; }).join("");
 
 function campoCodigo(nome = "codigo", rotulo = "Código interno ou de barras") {
-  return `<label>${rotulo}<div class="cod-in"><input name="${nome}" required inputmode="numeric" autocomplete="off" data-f="cod" placeholder="Digite o código">${SCAN_OK ? `<button type="button" class="btn-scan" data-act="scan" aria-label="Ler código com a câmera">${ICONES.scan}</button>` : ""}</div></label><div class="cod-info"></div>`;
+  return `<label>${rotulo}<div class="cod-in"><input name="${nome}" required inputmode="numeric" autocomplete="off" data-f="cod" placeholder="Digite o código">${SCAN_OK ? `<button type="button" class="btn-scan" data-act="scan" aria-label="Ler código com a câmera">${ICONES.scan}</button>` : ""}</div></label><div class="cod-info"></div>${nome === "codigo" ? `<button type="button" class="btn-link busca-link" data-act="abrirBuscaNome">🔎 Não sabe o código? Procure pelo nome</button>` : ""}`;
 }
 const qtdHTML = (nome, rot, req) => `<label>${rot}<div class="stepper"><button type="button" data-act="menos" aria-label="Menos">−</button><input name="${nome}" type="number" min="1" step="1" value="1" inputmode="numeric" ${req ? "required" : "disabled"}><button type="button" data-act="mais" aria-label="Mais">+</button></div></label>`;
 function itemHTML(tipo) {
@@ -1191,14 +1293,14 @@ function vNovo() {
       <div class="tipos">${Object.entries(TIPOS).map(([k, t]) => `
         <button class="tipo-card" data-act="escolherTipo" data-tipo="${k}" style="--c:${t.cor}">
           <span class="tipo-ico">${ICONES[k]}</span><b>${t.nome}</b><small>${t.desc}</small>
-          <em>${t.imediato ? `Imediato: ${PRAZO_URGENTE_MIN} min` : `Pronto em até ${t.sla || PRAZO_NORMAL_H}h`}</em>
+          <em>${t.imediato ? `Urgente: ${PRAZO_URGENTE_MIN} min` : `Pronto em até ${t.sla || PRAZO_NORMAL_H}h`}</em>
         </button>`).join("")}</div>
     </section>
     <div class="banner neutro">🟢 <b>Concluído</b> quer dizer que o escritório já entregou na loja. Não chegou? Em <b>Meus chamados</b>, abra o chamado e toque em <b>Não recebi</b>.</div>`;
 
   const t = TIPOS[novoTipo];
   const prioridade = t.imediato ? ""
-    : `<label>É urgente?<select name="prioridade" data-f="prioridade"><option value="normal" selected>Não · pronto em até ${t.sla || PRAZO_NORMAL_H}h</option><option value="urgente">Sim · 30 min</option></select></label>`;
+    : `<label>É urgente?<select name="prioridade" data-f="prioridade"><option value="normal" selected>Não · pronto em até ${t.sla || PRAZO_NORMAL_H}h</option><option value="urgente">Sim · ${PRAZO_URGENTE_MIN} min</option></select></label>`;
   const itens = (rot) => `<div class="sec-tit">${rot}</div><div id="itens">${itemHTML(novoTipo)}</div>
        <div class="form-acts"><button type="button" class="btn-sec" data-act="addItem">+ Adicionar ${["placa", "caixa", "balanca", "ajuste", "devolucao"].includes(novoTipo) ? "produto" : "item"}</button></div>`;
   let corpo = "", fotosRot = "Fotos (opcional, até 3)";
@@ -1234,7 +1336,7 @@ function vNovo() {
       <input type="hidden" name="solNome" value="${esc(eu?.nome || "")}"><input type="hidden" name="solCargo" value="${esc(eu?.cargo || "")}">
       <label style="margin-top:12px">Setor<select name="setor" required><option value="">Selecione</option>${opts(SETORES)}</select></label>
       ${prioridade}
-      ${t.imediato ? `<div class="banner urg-aviso">Emissão de nota é sempre <b>imediata</b>: o escritório tem ${PRAZO_URGENTE_MIN} min.</div>` : `<div class="banner urg-aviso" id="urgAviso" hidden><b>Urgente</b> é só para impacto imediato no cliente ou na venda (ex.: produto que não passa no caixa ou na balança, oferta do tabloide sem placa). O escritório tem ${PRAZO_URGENTE_MIN} min. Explique o motivo na observação.</div>`}
+      ${t.imediato ? `<div class="banner urg-aviso">${esc(t.nome)} já abre como <b>urgente</b>: o escritório tem ${PRAZO_URGENTE_MIN} min.</div>` : `<div class="banner urg-aviso" id="urgAviso" hidden><b>Urgente</b> é só para impacto imediato no cliente ou na venda (ex.: produto que não passa no caixa ou na balança, oferta do tabloide sem placa). O escritório tem ${PRAZO_URGENTE_MIN} min. Explique o motivo na observação.</div>`}
       ${corpo}
       <label><span id="obsRot">Observação (opcional)</span><textarea name="obs" rows="3" placeholder="Algo que o escritório precisa saber?"></textarea></label>
       <div class="sec-tit">${fotosRot}</div>
@@ -1300,8 +1402,8 @@ async function enviarNovo(form) {
   if (!eu || eu.nome !== solNome || eu.cargo !== solCargo) Pessoa.salvar(solNome, solCargo);
   btn.disabled = true; btn.textContent = "Enviando…";
   const agora = Date.now();
-  const p = { tipo: novoTipo, loja: P.loja, setor: g("setor"), prioridade, dados, obs: g("obs"), fotos: novoFotos.slice(),
-    status: "aberto", solicitanteUid: P.uid, solicitanteNome: solNome, cargo: solCargo, dispositivoId: Pessoa.ler()?.id || "", contaLoja: P.nome,
+  const p = { tipo: novoTipo, loja: P.loja, setor: g("setor"), prioridade, prazoMin: prioridade === "urgente" ? PRAZO_URGENTE_MIN : (t.sla || PRAZO_NORMAL_H) * 60, dados, obs: g("obs"), fotos: novoFotos.slice(),
+    status: "aberto", pushToken: PUSH_TOKEN, solicitanteUid: P.uid, solicitanteNome: solNome, cargo: solCargo, dispositivoId: Pessoa.ler()?.id || "", contaLoja: P.nome,
     responsavelUid: null, responsavelNome: null,
     criadoEm: agora, atualizadoEm: agora };
   try {
@@ -1343,6 +1445,7 @@ function cardPedido(p) {
   return `<button class="chamado" data-act="abrir" data-id="${esc(p.id)}" style="--c:${t.cor};--f:${s.cor}">
     <div class="chamado-l1"><span class="num">${num4(p.numero)}</span><span class="tag" style="--c:${t.cor}">${t.curto}</span>
       ${tagPrio(p)}${atrasado(p) && p.prioridade === "urgente" ? '<span class="tag atr">Atrasado</span>' : ""}
+      ${p.placaColocadaEm ? '<span class="tag ok">📸 Placa colocada</span>' : pedeFotoPlaca(p) ? '<span class="tag foto">📷 Falta a foto</span>' : ""}
       <span class="status" style="--c:${s.cor}">${s.nome}</span></div>
     <div class="chamado-res">${esc(resumo(p))}</div>
     <div class="chamado-meta">${isEsc() ? esc(p.loja) + " · " : ""}${ehLoja() && ehMeu(p) ? "Você" : esc(p.solicitanteNome) + (isEsc() && p.cargo ? " (" + esc(p.cargo) + ")" : "")} · ${esc(p.setor)} · ${desde(p.criadoEm)}${p.status === "concluido" && (p.resolvidoPor || p.responsavelNome) ? " · Resolvido por " + esc(p.resolvidoPor || p.responsavelNome) : p.responsavelNome ? " · Resp.: " + esc(p.responsavelNome) : ""}</div>
@@ -1478,10 +1581,10 @@ function vPainel() {
       <p><b>Chamados no período:</b> chamados abertos pela loja dentro do período escolhido acima. Cancelados não entram na conta.</p>
       <p><b>Tempo médio até assumir:</b> quanto tempo o chamado fica esperando até alguém do escritório pegar. Mostra se a fila está sendo olhada.</p>
       <p><b>Tempo médio de resolução:</b> tempo entre a loja abrir o chamado e o escritório marcar como resolvido e entregue.</p>
-      <p><b>Resolvidos no prazo (meta 90%):</b> % dos chamados resolvidos dentro do prazo: normal ${PRAZO_NORMAL_H}h, urgente e emissão de NF ${PRAZO_URGENTE_MIN} min, sempre até as ${LOJA_FECHA_H}h do mesmo dia (horário da loja: ${LOJA_ABRE_H}h às ${LOJA_FECHA_H}h). Abaixo de 90% aparece em laranja.</p>
+      <p><b>Resolvidos no prazo (meta 90%):</b> % dos chamados resolvidos dentro do prazo: normal ${PRAZO_NORMAL_H}h, urgente ${PRAZO_URGENTE_MIN} min (carga, NF, ajuste, devolução e produto sem cadastro já abrem como urgentes), sempre até as ${LOJA_FECHA_H}h do mesmo dia (horário da loja: ${LOJA_ABRE_H}h às ${LOJA_FECHA_H}h). Abaixo de 90% aparece em laranja.</p>
       <p><b>Urgentes no período:</b> chamados que a loja marcou como urgentes. Muitos urgentes podem indicar falta de planejamento (ex.: placas pedidas só no dia da oferta).</p>
       <p><b>Reabertos pela loja:</b> % de chamados marcados como resolvidos que a loja disse não ter recebido. Referência de mercado: abaixo de 5%.</p>
-      <p><b>Atrasados agora:</b> chamados pendentes ou em atendimento que já passaram do prazo. Chamado normal que passa do prazo (2h ou 21h) vira urgente automaticamente.</p>
+      <p><b>Atrasados agora:</b> chamados pendentes ou em atendimento que já passaram do prazo. Chamado normal que passa do prazo (${PRAZO_NORMAL_H}h ou 21h) vira urgente automaticamente.</p>
       <p><b>Quem resolve (5):</b> chamados por pessoa do escritório, com o tempo médio e o % no prazo de cada uma. "Sem responsável" são chamados que ninguém assumiu.</p>
       <p><b>Rankings (2 a 5):</b> sempre do maior para o menor volume. Muitos chamados do mesmo setor ou da mesma pessoa podem indicar um problema que se repete na loja (ex.: muitos produtos sem cadastro na mesma seção).</p>
     </div></div>`;
@@ -1572,13 +1675,14 @@ function trilhaHTML(p) {
 function vDetalhe(p) {
   const t = TIPOS[p.tipo] || { nome: p.tipo, cor: "#999" }, s = STATUS[p.status] || { nome: p.status, cor: "#999" }, E = isEsc();
   const info = [["Loja", p.loja], ["Setor", p.setor], ["Solicitante", p.solicitanteNome + (p.cargo ? " · " + p.cargo : "")], ["Aberto em", fmtData(p.criadoEm)],
-    ["Prioridade", TIPOS[p.tipo]?.imediato ? "Imediata" : p.prioridade === "urgente" ? "Urgente" : virouUrgente(p) ? "Virou urgente (passou do prazo)" : "Normal"], ["Prazo", fmtData(prazoMs(p)) + (atrasado(p) ? " (vencido)" : "")], ["Responsável", p.responsavelNome || "—"]];
+    ["Prioridade", p.prioridade === "urgente" ? "Urgente" : virouUrgente(p) ? "Virou urgente (passou do prazo)" : "Normal"], ["Prazo", fmtData(prazoMs(p)) + (atrasado(p) ? " (vencido)" : "")], ["Responsável", p.responsavelNome || "—"]];
   if (p.status === "concluido" && (p.resolvidoPor || p.responsavelNome)) info.push(["Resolvido por", p.resolvidoPor || p.responsavelNome]);
   if (p.concluidoEm) info.push(["Resolvido em", fmtData(p.concluidoEm)]);
   if (p.entreguePara) info.push(["Entregue para", p.entreguePara]);
   return `<div class="md-head" style="--c:${t.cor}"><span class="num">${num4(p.numero)}</span><b>${t.nome}</b><button class="x-close" data-act="fechar" aria-label="Fechar">×</button></div>
   <div class="md-body">
     ${trilhaHTML(p)}
+    ${fotoPlacaHTML(p)}
     <div class="chamado-l1">${p.status === "cancelado" ? `<span class="status" style="--c:${s.cor};margin-left:0">${s.nome}</span>` : ""}
       ${tagPrio(p)}${atrasado(p) && p.prioridade === "urgente" ? '<span class="tag atr">Atrasado</span>' : ""}</div>
     <dl class="info">${info.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
@@ -1592,11 +1696,51 @@ function vDetalhe(p) {
   </div>`;
 }
 
+// Placa de oferta entregue: quem abriu registra a foto da placa já colocada na loja (fecha o circuito)
+const pedeFotoPlaca = p => p.tipo === "placa" && p.status === "concluido" && !p.placaColocadaEm && (p.concluidoEm || 0) > DATA_FOTO_PLACA;
+const DATA_FOTO_PLACA = new Date(2026, 10, 24).getTime();   // vale para placas entregues a partir de 24/11/2026
+function fotoPlacaHTML(p) {
+  if (p.tipo !== "placa") return "";
+  if (p.placaColocadaEm) return `<div class="sec-tit">📸 Placa colocada</div>
+    <div class="foto-placa" id="fotoPlaca" data-id="${esc(p.id)}"><span class="muted">Carregando a foto…</span></div>
+    <p class="muted" style="margin:6px 0 10px">Registrada por <b>${esc(p.placaColocadaPor || "loja")}</b> em ${fmtData(p.placaColocadaEm)}</p>`;
+  if (!pedeFotoPlaca(p)) return "";
+  if (isEsc()) return `<div class="banner neutro">📷 Aguardando a loja tirar a foto da placa colocada.</div>`;
+  return `<div class="card-foto-placa">
+      <b>📸 Placa entregue! Agora tire a foto dela já colocada</b>
+      <span>Assim fica registrado que a placa está na gôndola.</span>
+      <div class="fotos-botoes">
+        <label class="btn-foto"><input type="file" accept="image/*" capture="environment" data-fotoplaca class="sr-sel"><span class="ico">📷</span>Tirar foto</label>
+        <label class="btn-foto"><input type="file" accept="image/*" data-fotoplaca class="sr-sel"><span class="ico">🖼️</span>Galeria</label>
+      </div></div>`;
+}
+async function carregarFotoPlaca() {
+  const box = $("#fotoPlaca"); if (!box || box.dataset.ok) return;
+  const p = PEDIDOS.find(x => x.id === box.dataset.id); if (!p) return;
+  box.dataset.ok = "1";
+  try { const src = await Store.lerAnexo(p, "placa");
+    box.innerHTML = src ? `<button class="foto grande" data-act="verFotoSrc"><img src="${esc(src)}" alt="Foto da placa colocada"></button>` : `<span class="muted">Foto não encontrada.</span>`;
+  } catch (e) { box.innerHTML = `<span class="muted">Não foi possível carregar a foto.</span>`; delete box.dataset.ok; }
+}
+async function enviarFotoPlaca(file) {
+  const p = PEDIDOS.find(x => x.id === aberto); if (!p || !file) return;
+  const card = document.querySelector(".card-foto-placa"); if (card) card.innerHTML = `<b>Enviando a foto…</b>`;
+  try {
+    const foto = await comprimir(file, 900, 0.55);           // ~60 a 100 KB
+    const onde = await Store.salvarAnexo(p, "placa", foto);
+    const patch = { placaColocadaEm: Date.now(), placaColocadaPor: quemSou() || "", fotoPlaca: onde };
+    if (onde === "inline") patch.fotoPlacaInline = foto;
+    await Store.atualizar(p.id, patch, "Placa colocada: foto registrada");
+    toast("Foto registrada. Obrigado!", "ok");
+  } catch (e) { console.error(e); toast("Não foi possível enviar a foto: " + (e.code || e.message), "erro"); renderDetalhe(); }
+}
+
 function abrirDetalhe(id) { aberto = id; renderDetalhe(); $("#modal").hidden = false; document.body.style.overflow = "hidden"; }
 function renderDetalhe() {
   const p = PEDIDOS.find(x => x.id === aberto); if (!p) { fecharDetalhe(); return; }
   const prev = $("#msgTxt")?.value || "", box = $("#modal"), sc = box.scrollTop;
   $("#modalBox").innerHTML = vDetalhe(p);
+  carregarFotoPlaca();
   if (prev) $("#msgTxt").value = prev;
   box.scrollTop = sc;
 }
@@ -1649,7 +1793,7 @@ async function executar(acao, p) {
         o = await dialogo({ titulo: "Não recebi / não resolveu", texto: `O chamado volta para ${p.responsavelNome || "o escritório"}. Conte o que aconteceu.`, placeholder: "Ex.: placas não chegaram na loja", obrigatorio: true, botao: "Reabrir chamado", perigo: true });
         if (o === null) return;
         await Store.atualizar(p.id, { status: p.responsavelUid ? "andamento" : "aberto", concluidoEm: null, entreguePara: null, contestado: true,
-          reabertoEm: Date.now(), reabertoPorNome: quemSou() || "", reabertoPorDispositivo: Pessoa.ler()?.id || "", motivoReabertura: o }, "Loja reabriu: não recebeu / não resolveu", o); break;
+          reabertoEm: Date.now(), reabertoPorNome: quemSou() || "", reabertoPorDispositivo: Pessoa.ler()?.id || "", reabertoPorToken: PUSH_TOKEN, motivoReabertura: o }, "Loja reabriu: não recebeu / não resolveu", o); break;
       case "cancelar":
         if (isEsc() && !dono && !G) return negar("Só quem assumiu o chamado pode cancelar.");
         o = await dialogo({ titulo: "Cancelar chamado", texto: "Informe o motivo do cancelamento.", placeholder: "Motivo", obrigatorio: true, botao: "Cancelar chamado", perigo: true });
@@ -1744,8 +1888,10 @@ function avisoResolvido(p) {
   const t = TIPOS[p.tipo] || { nome: "" };
   mostrarAviso({ id: p.id, numero: p.numero, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅",
     titulo: p.reabertoEm ? "Chamado reaberto foi resolvido!" : "Chamado resolvido!", sub: "O escritório já entregou na loja",
-    texto: `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>.<br><span class="muted">Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</span>`,
-    botao: "Ver chamado" });
+    texto: pedeFotoPlaca(p)
+      ? `<b>${esc(t.nome)}</b> entregue para <b>${esc(p.entreguePara || "a loja")}</b>.<br>📸 Agora <b>tire a foto da placa colocada</b> para fechar o chamado.`
+      : `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>.<br><span class="muted">Não chegou? Abra o chamado e toque em <b>Não recebi</b>.</span>`,
+    botao: pedeFotoPlaca(p) ? "Tirar foto da placa" : "Ver chamado" });
 }
 function avisosResolvidosLoja(lista) {
   if (!ehLoja() || !Pessoa.ler()) return;
@@ -1799,6 +1945,22 @@ function onPedidos(lista) {
   if (chamadoDoLink && lista.some(p => p.id === chamadoDoLink)) { const id = chamadoDoLink; chamadoDoLink = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} abrirDoAviso(id); }
 }
 
+/* ---------- aviso com o portal fechado (push do Firebase) ---------- */
+let PUSH_TOKEN = "";
+async function registrarPush() {
+  if (!VAPID_KEY || Store.modo !== "firebase" || !("Notification" in window) || Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
+  try {
+    const m = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js");
+    if (!(await m.isSupported())) return;
+    const reg = await navigator.serviceWorker.ready;
+    const tk = await m.getToken(m.getMessaging(Store._fb.app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!tk) return;
+    PUSH_TOKEN = tk;
+    const eu = ehLoja() ? Pessoa.ler() : null;
+    await Store.salvarToken(tk, { nome: eu?.nome, dispositivoId: eu?.id });
+  } catch (e) { console.warn("push:", e); }
+}
+
 function iniciarSessao() {
   if (!Store.perfil) { renderLogin(); return; }
   aba = isEsc() ? "fila" : "novo"; novoTipo = null; novoFotos = []; enviado = null; resetFiltros();
@@ -1806,6 +1968,8 @@ function iniciarSessao() {
   if (unsub) unsub();
   unsub = Store.observarPedidos(onPedidos);
   manterTelaLigada();
+  setTimeout(registrarPush, 1500);
+  SUGS = null; sugEnviada = false; if (isGestor()) carregarSugestoes();
   if (ehLoja() && (!Pessoa.ler() || (Pessoa.ler().cargo === "Gerente" && !Pessoa.ler().gerenteOk))) { renderIdentificacao(); return; }
   render();
 }
@@ -1857,8 +2021,14 @@ document.addEventListener("click", e => {
       if (document.querySelectorAll("#itens .item").length > 1) el.closest(".item").remove();
       else toast("O chamado precisa de pelo menos um produto."); break;
     case "escolherProd": { const inp = el.closest(".item").querySelector("input[data-f=cod]"); inp.value = el.dataset.cod; infoCodigo(inp); break; }
+    case "abrirBuscaNome": {
+      const box = el.closest(".item").querySelector(".cod-info");
+      if (!box.querySelector(".busca-nome")) box.insertAdjacentHTML("beforeend", buscaNomeHTML());
+      box.querySelector(".busca-nome input").focus(); el.hidden = true; break; }
     case "escolherNome": {
       const item = el.closest(".item"), inp = item.querySelector("input[data-f=cod]"), lido = inp.value.trim();
+      // escolheu pelo nome sem ter digitado um código (ou com um código que já existe): só preenche o produto
+      if (!Produtos.norm(lido) || Produtos.buscarTodos(lido).length) { inp.value = el.dataset.cod; infoCodigo(inp); limparFalta(inp); const lk = item.querySelector(".busca-link"); if (lk) lk.hidden = false; break; }
       // guarda o código de barras que a loja leu: o escritório vê e ele passa a ser reconhecido neste celular
       let h = item.querySelector("input[name=eanLido]"); if (!h) { h = document.createElement("input"); h.type = "hidden"; h.name = "eanLido"; item.appendChild(h); }
       h.value = lido; Produtos.lembrar(lido, el.dataset.cod);
@@ -1887,8 +2057,13 @@ document.addEventListener("click", e => {
     case "testarAviso": liberarSom(); mostrarAviso({ id: "teste", numero: 0, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅", titulo: "Teste de aviso", sub: "É assim que chega quando o escritório resolve", texto: "Se você ouviu o som, está tudo certo! 👍", botao: "OK" }); setTimeout(() => avisoDoSistema({ id: "teste", numero: 0, titulo: "Teste de aviso", texto: "Assim chega o aviso com o celular bloqueado." }), 300); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
     case "avisoAbrir": abrirDoAviso(el.dataset.id); break;
-    case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { const bx = $("#boxAvisos"); if (bx) bx.outerHTML = caixaAvisosHTML(); else render(); if (p === "granted") { somResolvido(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;
+    case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { const bx = $("#boxAvisos"); if (bx) bx.outerHTML = caixaAvisosHTML(); else render(); if (p === "granted") { somResolvido(); registrarPush(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;
     case "fechar": fecharDetalhe(); break;
+    case "novaSug": sugEnviada = false; render(); break;
+    case "lerSug": { const id = el.dataset.id; el.disabled = true;
+      Store.marcarSugestao(id, { lida: true, lidaEm: Date.now() }).then(() => { const x = (SUGS || []).find(y => y.id === id); if (x) x.lida = true; render(); })
+        .catch(e => { toast("Erro: " + (e.code || e.message), "erro"); el.disabled = false; }); break; }
+    case "verFotoSrc": { const i = el.querySelector("img"); if (i) verFoto(i.src); break; }
     case "verFoto": { const p = PEDIDOS.find(x => x.id === aberto); if (p) verFoto(p.fotos[+el.dataset.i]); break; }
     case "msg": enviarMsg(); break;
     case "acao": { const p = PEDIDOS.find(x => x.id === (el.dataset.id || aberto)); if (p) executar(el.dataset.acao, p); break; }
@@ -1920,6 +2095,7 @@ document.addEventListener("change", e => {
   else if (f === "prioridade") { const u = e.target.value === "urgente"; $("#urgAviso").hidden = !u; $("#obsRot").textContent = u ? "Por que é urgente? (obrigatório)" : "Observação (opcional)"; const o = document.querySelector("#fNovo [name=obs]"); if (o) o.required = u; }
   else if (f === "meus") { filtros.meus = e.target.checked; render(); }
   else if (e.target.dataset?.foto !== undefined && e.target.type === "file") { addFotos([...e.target.files]); e.target.value = ""; }
+  else if (e.target.dataset?.fotoplaca !== undefined && e.target.type === "file") { enviarFotoPlaca(e.target.files[0]); e.target.value = ""; }
 });
 const limparFalta = el => { const f = el?.closest?.(".falta"); if (f) { f.classList.remove("falta"); $("#toast")?.classList.remove("show"); } };
 document.addEventListener("input", e => {
@@ -1947,6 +2123,7 @@ document.addEventListener("submit", e => {
   if (e.target.id === "fNovo") { e.preventDefault(); enviarNovo(e.target); }
   if (e.target.id === "fLogin") { e.preventDefault(); login(e.target); }
   if (e.target.id === "fPessoa") { e.preventDefault(); salvarIdentificacao(e.target); }
+  if (e.target.id === "fSug") { e.preventDefault(); enviarSugestao(e.target); }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#dlg").hidden && aberto) fecharDetalhe(); });
 window.addEventListener("storage", e => { if (e.key === "cs_demo_chamados_v4" && Store.modo === "demo") Store._avisar(); });

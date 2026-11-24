@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    function perfil() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
+    function gestor() { return logado() && perfil().perfil == 'gestor'; }
+    function escritorio() { return logado() && perfil().perfil == 'escritorio'; }
+    function acessoTotal() { return gestor() || escritorio(); }
+
+    match /usuarios/{uid} {
+      allow read: if logado() && (request.auth.uid == uid || acessoTotal());
+      allow write: if false;
+    }
+
+    match /chamados/{id} {
+      // Escritório e gestor veem tudo; a conta da loja vê os chamados da própria loja
+      // (a separação entre pessoas da mesma loja é feita na tela, pelo celular e pelo nome)
+      allow read: if acessoTotal()
+        || (logado() && perfil().perfil == 'solicitante' && perfil().loja == resource.data.loja);
+
+      allow create: if logado() && perfil().perfil == 'solicitante'
+        && request.resource.data.loja == perfil().loja
+        && request.resource.data.solicitanteUid == request.auth.uid
+        && request.resource.data.status == 'aberto';
+
+      // Gestor: tudo. Escritório: só chamado livre (para assumir) ou já assumido por ele.
+      // Loja: só chamados da própria loja, sem mexer em responsável, loja ou conta que abriu.
+      allow update: if gestor()
+        || (escritorio()
+            && (resource.data.responsavelUid == null || resource.data.responsavelUid == request.auth.uid)
+            && (request.resource.data.responsavelUid == request.auth.uid
+                || request.resource.data.responsavelUid == resource.data.responsavelUid))
+        || (logado() && perfil().perfil == 'solicitante' && perfil().loja == resource.data.loja
+            && request.resource.data.loja == resource.data.loja
+            && request.resource.data.solicitanteUid == resource.data.solicitanteUid
+            && request.resource.data.responsavelUid == resource.data.responsavelUid);
+
+      allow delete: if false;
+    }
+
+    match /config/contador {
+      allow read, write: if logado();
+    }
+
+    // Fotos grandes (ex.: placa colocada): ficam fora do chamado para a lista continuar leve
+    match /anexos/{id} {
+      allow read: if acessoTotal() || (logado() && perfil().loja == resource.data.loja);
+      allow create, update: if logado() && perfil().perfil == 'solicitante'
+        && request.resource.data.loja == perfil().loja
+        && request.resource.data.foto is string && request.resource.data.foto.size() < 900000;
+      allow delete: if gestor();
+    }
+
+    // Sugestões: qualquer pessoa logada envia; só o gestor lê e marca como lida
+    match /sugestoes/{id} {
+      allow create: if logado() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.texto is string && request.resource.data.texto.size() < 4000;
+      allow read, update, delete: if gestor();
+    }
+
+    // Endereços de aviso (push) de cada aparelho: só a função do servidor lê
+    match /tokens/{token} {
+      allow create, update: if logado() && request.resource.data.uid == request.auth.uid;
+      allow read, delete: if false;
+    }
+  }
+}

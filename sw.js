@@ -20,10 +20,16 @@ self.addEventListener("notificationclick", e => {
   })());
 });
 
-// Preparado para avisos com o app fechado (push), caso seja ativado no futuro
+// Aviso com o portal FECHADO (push do Firebase Cloud Messaging, enviado pela função "avisos")
 self.addEventListener("push", e => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch (err) {}
-  e.waitUntil(self.registration.showNotification(d.titulo || "Portal de Chamados", {
-    body: d.texto || "", icon: "icone-192.png", badge: "icone-192.png", tag: "chamado-" + (d.id || ""),
-    renotify: true, vibrate: [300, 150, 300, 150, 300], data: { id: d.id || "" } }));
+  const x = d.data || d.notification || d;
+  e.waitUntil((async () => {
+    // portal aberto e na frente: ele mesmo já mostra o pop-up e apita
+    const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (abas.some(c => c.visibilityState === "visible" && c.focused)) return;
+    await self.registration.showNotification(x.titulo || x.title || "Portal de Chamados", {
+      body: x.texto || x.body || "", icon: "icone-192.png", badge: "icone-192.png", tag: "chamado-" + (x.id || Date.now()),
+      renotify: true, requireInteraction: true, vibrate: [300, 150, 300, 150, 300], data: { id: x.id || "" } });
+  })());
 });

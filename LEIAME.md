@@ -172,6 +172,28 @@ service cloud.firestore {
     match /config/contador {
       allow read, write: if logado();
     }
+
+    // Fotos grandes (ex.: placa colocada): ficam fora do chamado para a lista continuar leve
+    match /anexos/{id} {
+      allow read: if acessoTotal() || (logado() && perfil().loja == resource.data.loja);
+      allow create, update: if logado() && perfil().perfil == 'solicitante'
+        && request.resource.data.loja == perfil().loja
+        && request.resource.data.foto is string && request.resource.data.foto.size() < 900000;
+      allow delete: if gestor();
+    }
+
+    // Sugestões: qualquer pessoa logada envia; só o gestor lê e marca como lida
+    match /sugestoes/{id} {
+      allow create: if logado() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.texto is string && request.resource.data.texto.size() < 4000;
+      allow read, update, delete: if gestor();
+    }
+
+    // Endereços de aviso (push) de cada aparelho: só a função do servidor lê
+    match /tokens/{token} {
+      allow create, update: if logado() && request.resource.data.uid == request.auth.uid;
+      allow read, delete: if false;
+    }
   }
 }
 ```
