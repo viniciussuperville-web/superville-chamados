@@ -371,7 +371,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.24-3";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.24-4";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 15;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo) · fase de testes, pode mudar
 const PRAZO_NORMAL_H = 1;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente · fase de testes, pode mudar
 // Prazos antigos (chamados abertos antes de 24/11/2026 não guardavam o prazo): urgente 30 min, normal 2h
@@ -382,7 +382,7 @@ const LOJA_ABRE_H = 7, LOJA_FECHA_H = 21;            // horário da loja: o cham
 // (Configurações do projeto › Cloud Messaging › Certificados push da Web). Vazia = só avisa com o portal aberto/minimizado.
 const VAPID_KEY = "BKb54gBgjByg6LWNur7-hU2ZtNK0hpcu0VVQZAnza05kLeVlndbaLi8AtJVW60TViJjx8Ct8Dc6Z68XC0uFQ_bg";
 // Endereço do serviço gratuito de avisos (Google Apps Script, pasta avisos-gratis). Vazio = desligado.
-const AVISOS_URL = "";
+const AVISOS_URL = "https://script.google.com/macros/s/AKfycbzPK0kjKMRN3YL3zsGadXsB-ZN446vhQ0OJ8VB8x4VMLEyrf7QmbNDX-dfPfy5leNMF5w/exec";
 const LOJAS_REDE = ["Vila Romana", "Vila Leopoldina", "Santo Amaro", "Pio XI"]; // sugestões de destinatário da NF
 const BASE_PRODUTOS = "produtos.csv";                  // base de produtos (código interno, código de barras, descrição) na mesma pasta
 const BASE_EXTRAS = "codigos-extras.csv";             // códigos de barras adicionais de um mesmo produto (codigo;ean), ex.: importado e nacional
