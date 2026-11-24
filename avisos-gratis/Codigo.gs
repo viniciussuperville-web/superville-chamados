@@ -22,24 +22,26 @@ const FS = "https://firestore.googleapis.com/v1/projects/" + PROJETO + "/databas
 function doPost(e) {
   try {
     const b = JSON.parse(e.postData.contents || "{}");
-    if (!usuarioValido_(b.idToken)) return resposta_({ ok: false, erro: "login" });
-    const p = lerDoc_("chamados/" + b.id);
+    // confere o login e lê o chamado ao mesmo tempo (mais rápido)
+    const [valido, p] = loginEChamado_(b.idToken, b.id);
+    if (!valido) return resposta_({ ok: false, erro: "login" });
     if (!p) return resposta_({ ok: false, erro: "chamado" });
     const n = "#" + String(p.numero || 0).padStart(4, "0"), tipo = TIPOS[p.tipo] || p.tipo;
-    let tokens = [], msg = null;
+    let enviados = 0;
     if (b.evento === "novo") {
-      tokens = tokensEscritorio_();
-      msg = { titulo: (p.prioridade === "urgente" ? "URGENTE · " : "") + "Chamado novo " + n, texto: tipo + " · Loja " + p.loja + " · " + (p.solicitanteNome || "") };
+      enviados += enviar_(tokensEscritorio_(), { titulo: (p.prioridade === "urgente" ? "URGENTE · " : "") + "Chamado novo " + n, texto: tipo + " · Loja " + p.loja + " · " + (p.solicitanteNome || "") }, b.id);
     } else if (b.evento === "resolvido" && p.status === "concluido") {
-      tokens = [p.pushToken, p.reabertoPorToken];
-      msg = p.tipo === "placa"
-        ? { titulo: "Placa entregue! " + n, texto: "Entregue para " + (p.entreguePara || "a loja") + ". Toque aqui e tire a foto da placa colocada." }
-        : { titulo: "Chamado resolvido " + n, texto: tipo + " resolvido por " + (p.resolvidoPor || "escritório") + "." };
+      enviados += enviar_([p.pushToken, p.reabertoPorToken], p.tipo === "placa"
+        ? { titulo: "Placa entregue! " + n, texto: "Entregue para " + (p.entreguePara || "a loja") + ". Toque aqui, anexe a foto da placa colocada e toque em Enviar foto." }
+        : { titulo: "Chamado resolvido " + n, texto: tipo + " resolvido por " + (p.resolvidoPor || "escritório") + "." }, b.id);
+      enviados += enviar_(tokensGestor_(), { titulo: "✅ Resolvido " + n + " · Loja " + p.loja, texto: tipo + " · por " + (p.resolvidoPor || "escritório") + (p.entreguePara ? " · entregue para " + p.entreguePara : "") }, b.id);
     } else if (b.evento === "reaberto" && p.contestado) {
-      tokens = tokensEscritorio_();
-      msg = { titulo: "Chamado REABERTO " + n, texto: (p.reabertoPorNome || "A loja") + ": " + (p.motivoReabertura || "não recebeu") };
+      enviados += enviar_(tokensEscritorio_(), { titulo: "Chamado REABERTO " + n, texto: (p.reabertoPorNome || "A loja") + ": " + (p.motivoReabertura || "não recebeu") }, b.id);
+    } else if (b.evento === "foto" && p.placaColocadaEm) {
+      enviados += enviar_(tokensEscritorio_().concat(tokensGerentes_(p.loja)), { titulo: "📸 Placa colocada " + n + " · Loja " + p.loja, texto: (p.placaColocadaPor || "A loja") + " enviou a foto da placa na gôndola. Toque para ver." }, b.id);
+    } else if (b.evento === "cancelado" && p.status === "cancelado") {
+      enviados += enviar_(tokensGestor_(), { titulo: "🚫 Cancelado " + n + " · Loja " + p.loja, texto: tipo + " · por " + (p.canceladoPor || "escritório") }, b.id);
     }
-    const enviados = msg ? enviar_(tokens, msg, b.id) : 0;
     return resposta_({ ok: true, enviados: enviados });
   } catch (err) {
     console.error(err);
@@ -48,6 +50,17 @@ function doPost(e) {
 }
 function doGet() { return resposta_({ ok: true, servico: "avisos do Portal de Chamados" }); }
 function resposta_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+// Confere o login e lê o chamado em paralelo
+function loginEChamado_(idToken, id) {
+  if (!idToken || !id) return [false, null];
+  const rs = UrlFetchApp.fetchAll([
+    { url: "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + API_KEY, method: "post", contentType: "application/json", payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true },
+    { url: FS + "/chamados/" + encodeURIComponent(id), headers: cab_(), muteHttpExceptions: true }]);
+  const u = rs[0].getResponseCode() === 200 ? JSON.parse(rs[0].getContentText()).users : null;
+  const p = rs[1].getResponseCode() === 200 ? valores_(JSON.parse(rs[1].getContentText()).fields || {}) : null;
+  return [!!(u && u.length), p];
+}
 
 // Confere se quem chamou está logado no portal
 function usuarioValido_(idToken) {
@@ -92,12 +105,50 @@ function valores_(f) {
   });
   return o;
 }
-function tokensEscritorio_() {
-  const q = { structuredQuery: { from: [{ collectionId: "tokens" }], where: { fieldFilter: { field: { fieldPath: "perfil" }, op: "IN",
-    value: { arrayValue: { values: [{ stringValue: "escritorio" }, { stringValue: "gestor" }] } } } } } };
+function consultar_(colecao, filtros) {
+  const w = filtros.length === 1 ? filtros[0] : { compositeFilter: { op: "AND", filters: filtros } };
+  const q = { structuredQuery: { from: [{ collectionId: colecao }], where: w } };
   const r = UrlFetchApp.fetch(FS + ":runQuery", { method: "post", contentType: "application/json", headers: cab_(), payload: JSON.stringify(q), muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) return [];
-  return JSON.parse(r.getContentText()).filter(x => x.document).map(x => x.document.name.split("/").pop());
+  if (r.getResponseCode() !== 200) { console.warn(r.getContentText()); return []; }
+  return JSON.parse(r.getContentText()).filter(x => x.document).map(x => x.document);
+}
+const igual_ = (campo, v) => ({ fieldFilter: { field: { fieldPath: campo }, op: "EQUAL", value: typeof v === "boolean" ? { booleanValue: v } : { stringValue: v } } });
+const nomes_ = docs => docs.map(d => d.name.split("/").pop());
+// Escritório + gestor (inclui o celular "só avisos")
+function tokensEscritorio_() {
+  return nomes_(consultar_("tokens", [{ fieldFilter: { field: { fieldPath: "perfil" }, op: "IN",
+    value: { arrayValue: { values: [{ stringValue: "escritorio" }, { stringValue: "gestor" }] } } } }]));
+}
+function tokensGestor_() { return nomes_(consultar_("tokens", [igual_("perfil", "gestor")])); }
+// Gerentes da loja (celulares da conta da loja em que a pessoa entrou como Gerente)
+function tokensGerentes_(loja) { return loja ? nomes_(consultar_("tokens", [igual_("loja", loja), igual_("gerente", true)])) : []; }
+
+// A cada 5 minutos (acionador): avisa o gestor do chamado que passou do prazo sem ser resolvido
+const ABRE_H = 7, FECHA_H = 21, LEGADO = { urgente: 30, normal: 120 };
+function horaSP_(ms) { return Number(Utilities.formatDate(new Date(ms), "America/Sao_Paulo", "H")); }
+function prazoMs_(p) {
+  // mesmo cálculo do portal: começa no horário da loja (7h às 21h) e nunca passa das 21h do mesmo dia
+  let ini = Number(p.criadoEm) || 0; const h = horaSP_(ini);
+  const dia = ms => Utilities.formatDate(new Date(ms), "America/Sao_Paulo", "yyyy-MM-dd");
+  const em = (d, hh) => new Date(d + "T" + String(hh).padStart(2, "0") + ":00:00-03:00").getTime();
+  if (h < ABRE_H) ini = em(dia(ini), ABRE_H);
+  else if (h >= FECHA_H) ini = em(dia(ini + 86400000), ABRE_H);
+  const min = Number(p.prazoMin) || (p.prioridade === "urgente" ? LEGADO.urgente : LEGADO.normal);
+  return Math.min(ini + min * 60000, em(dia(ini), FECHA_H));
+}
+function verificarAtrasos() {
+  const gestor = tokensGestor_(); if (!gestor.length) return;
+  const docs = consultar_("chamados", [{ fieldFilter: { field: { fieldPath: "status" }, op: "IN",
+    value: { arrayValue: { values: [{ stringValue: "aberto" }, { stringValue: "andamento" }] } } } }]);
+  const agora = Date.now();
+  docs.forEach(d => {
+    const p = valores_(d.fields || {}), id = d.name.split("/").pop();
+    if (p.atrasoAvisadoEm || agora <= prazoMs_(p) || agora - prazoMs_(p) > 6 * 3600000) return;
+    const n = "#" + String(p.numero || 0).padStart(4, "0");
+    enviar_(gestor, { titulo: "⏰ Fora do prazo " + n + " · Loja " + p.loja, texto: (TIPOS[p.tipo] || p.tipo) + " · " + (p.responsavelNome ? "com " + p.responsavelNome : "ninguém assumiu ainda") }, id);
+    UrlFetchApp.fetch(FS + "/chamados/" + id + "?updateMask.fieldPaths=atrasoAvisadoEm", { method: "patch", contentType: "application/json", headers: cab_(),
+      payload: JSON.stringify({ fields: { atrasoAvisadoEm: { integerValue: String(agora) } } }), muteHttpExceptions: true });
+  });
 }
 
 // Manda o aviso para cada aparelho. Aparelho que não existe mais: apaga o endereço.
@@ -118,4 +169,4 @@ function enviar_(tokens, msg, id) {
 }
 
 // Para testar no editor: escolha "testarAcesso" e clique em Executar (deve mostrar "Acesso OK")
-function testarAcesso() { acesso_(); console.log("Acesso OK · aparelhos do escritório: " + tokensEscritorio_().length); }
+function testarAcesso() { acesso_(); console.log("Acesso OK · aparelhos do escritório: " + tokensEscritorio_().length + " · do gestor: " + tokensGestor_().length + " · de gerentes (Vila Romana): " + tokensGerentes_("Vila Romana").length); }

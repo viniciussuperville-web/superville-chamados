@@ -97,6 +97,12 @@ label.check input{width:18px;height:18px;accent-color:var(--verde);flex:none}
 .btn-sec{background:#fff;border:1px solid #D1D5DB;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
 .btn-sec:hover{border-color:var(--verde)}
 .btn-link{background:none;border:0;color:var(--verde-esc);font-weight:700;cursor:pointer;padding:0;margin-bottom:8px}
+.pre-placa{width:100%;max-height:340px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid var(--borda)}
+.agora{background:#fff;border:1px solid var(--borda);border-left:4px solid var(--verde);border-radius:14px;padding:12px 12px 6px;margin:0 0 12px}
+.agora-tit{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}.agora-tit small{color:var(--muted);font-size:12px}
+.agora-it{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;border-top:1px solid #F0F1F3;padding:8px 2px;cursor:pointer;font-size:14px}
+.agora-it i{font-style:normal;width:22px;flex:none;text-align:center}.agora-it small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.agora-mais{display:block;margin:6px auto 4px;font-size:14px}
 .card-foto-placa{display:flex;flex-direction:column;gap:6px;background:#EAF7EF;border:2px solid #3BB072;border-radius:14px;padding:14px;margin:10px 0 14px}
 .card-foto-placa span{font-size:14px;color:#3d4a42}
 .foto-placa .foto.grande{width:100%;max-width:340px;height:auto;aspect-ratio:3/4}
@@ -375,7 +381,7 @@ const FIREBASE_CONFIG = {
 };
 
 const LOJAS = ["Vila Romana"];                         // piloto. Depois: "Vila Leopoldina", "Santo Amaro", "Pio XI"
-const VERSAO_APP = "2026.11.24-6";                   // mude a cada publicação: telas abertas se atualizam sozinhas
+const VERSAO_APP = "2026.11.24-7";                   // mude a cada publicação: telas abertas se atualizam sozinhas
 const PRAZO_URGENTE_MIN = 15;                        // chamado URGENTE: prazo do escritório em minutos (vale para qualquer tipo) · fase de testes, pode mudar
 const PRAZO_NORMAL_H = 1;                            // chamado NORMAL: prazo do escritório em horas. Passou disso, vira urgente · fase de testes, pode mudar
 // Prazos antigos (chamados abertos antes de 24/11/2026 não guardavam o prazo): urgente 30 min, normal 2h
@@ -982,7 +988,7 @@ const Store = {
     if (this.modo !== "firebase") return;
     const { db, F } = this._fb; const P = this.perfil;
     // aparelho "só avisos" recebe os mesmos avisos do escritório
-    await F.setDoc(F.doc(db, "tokens", token), { token, uid: P.uid, perfil: P.perfil === "avisos" ? "escritorio" : P.perfil, soAvisos: P.perfil === "avisos", loja: P.loja || "", nome: extra.nome || P.nome || "", dispositivoId: extra.dispositivoId || "", atualizadoEm: Date.now() });
+    await F.setDoc(F.doc(db, "tokens", token), { token, uid: P.uid, perfil: P.perfil === "avisos" ? "escritorio" : P.perfil, soAvisos: P.perfil === "avisos", loja: P.loja || "", nome: extra.nome || P.nome || "", cargo: extra.cargo || P.cargo || "", gerente: !!extra.gerente, dispositivoId: extra.dispositivoId || "", atualizadoEm: Date.now() });
   },
 
   async atualizar(id, patch, acao, obs) {
@@ -1549,6 +1555,23 @@ function filtrosEscHTML() {
     ${ativos ? `<div class="filtro-ativo"><span><b>${n}</b> chamado${n === 1 ? "" : "s"} com ${ativos} filtro${ativos > 1 ? "s" : ""}</span><button class="btn-link" data-act="limparFiltros">Limpar filtros</button></div>` : ""}`;
 }
 
+// Gestor: o que aconteceu por último em todos os chamados (abre, assume, resolve, reabre, cancela, mensagens, fotos)
+let agoraMais = false;
+function iconeAcao(a) {
+  return /aberto$/i.test(a) && /Chamado aberto/.test(a) ? "🆕" : /Assumiu/.test(a) ? "🙋" : /Resolvido/.test(a) ? "✅" : /Placa colocada/.test(a) ? "📸"
+    : /Loja reabriu|reaberto/i.test(a) ? "↩️" : /cancelado/i.test(a) ? "🚫" : /Transferido/.test(a) ? "🔀" : /Mensagem/.test(a) ? "💬" : "•";
+}
+function agoraHTML() {
+  const ev = [];
+  for (const p of TODOS) for (const h of p.historico || []) if (h && h.em) ev.push({ p, h });
+  ev.sort((a, b) => b.h.em - a.h.em);
+  const mostrar = ev.slice(0, agoraMais ? 25 : 6);
+  if (!mostrar.length) return "";
+  const hoje = ev.filter(e => e.h.em >= new Date().setHours(0, 0, 0, 0)).length;
+  return `<section class="agora"><div class="agora-tit"><b>📡 Acontecendo agora</b><small>${hoje} movimentaç${hoje === 1 ? "ão" : "ões"} hoje · ao vivo</small></div>
+    ${mostrar.map(({ p, h }) => `<button class="agora-it" data-act="abrir" data-id="${esc(p.id)}"><i>${iconeAcao(h.acao)}</i><span><b>${esc(h.acao)}</b> · ${num4(p.numero)} ${esc(TIPOS[p.tipo]?.curto || "")} · Loja ${esc(p.loja)}<small>${esc(h.por || "")} · ${Date.now() - h.em < 60000 ? "agora mesmo" : desde(h.em)}${h.obs ? " · “" + esc(String(h.obs).slice(0, 60)) + "”" : ""}</small></span></button>`).join("")}
+    ${ev.length > 6 ? `<button class="btn-link agora-mais" data-act="agoraMais">${agoraMais ? "Mostrar menos" : "Ver mais movimentações"}</button>` : ""}</section>`;
+}
 function vFila() {
   const atr = PEDIDOS.filter(atrasado).length;
   const urg = PEDIDOS.filter(p => p.status === "aberto" && ehUrgente(p));
@@ -1557,6 +1580,7 @@ function vFila() {
       <b>${urg.length} chamado${urg.length > 1 ? "s" : ""} URGENTE${urg.length > 1 ? "S" : ""} sem responsável</b>
       <span>${urg.map(p => num4(p.numero) + " · " + esc(TIPOS[p.tipo]?.curto || "") + " · " + desde(p.criadoEm)).join("  |  ")} — toque para abrir</span></button>` : ""}
     ${avisoSistemaHTML()}
+    ${isGestor() ? agoraHTML() : ""}
     ${farolHTML()}
     <div class="kpis">
       ${kpi("meus", PEDIDOS.filter(p => p.status === "andamento" && ehResponsavel(p)).length, "#111111", "Comigo — eu assumi")}
@@ -1741,13 +1765,30 @@ function fotoPlacaHTML(p) {
     <p class="muted" style="margin:6px 0 10px">Registrada por <b>${esc(p.placaColocadaPor || "loja")}</b> em ${fmtData(p.placaColocadaEm)}</p>`;
   if (!pedeFotoPlaca(p)) return "";
   if (isEsc()) return `<div class="banner neutro">📷 Aguardando a loja tirar a foto da placa colocada.</div>`;
+  const pre = fotoPlacaPre && fotoPlacaPre.id === p.id ? fotoPlacaPre.foto : "";
+  const botoes = (r1, r2) => `<div class="fotos-botoes">
+        <label class="btn-foto"><input type="file" accept="image/*" capture="environment" data-fotoplaca class="sr-sel"><span class="ico">📷</span>${r1}</label>
+        <label class="btn-foto"><input type="file" accept="image/*" data-fotoplaca class="sr-sel"><span class="ico">🖼️</span>${r2}</label>
+      </div>`;
+  if (pre) return `<div class="card-foto-placa">
+      <b>📸 Confira a foto da placa</b>
+      <img class="pre-placa" src="${pre}" alt="Foto da placa colocada">
+      <button class="btn btn-full" data-act="enviarFotoPlaca">✅ Enviar foto</button>
+      <span class="muted" style="text-align:center">Ao enviar, a foto vai para o escritório, o gestor e os gerentes.</span>
+      ${botoes("Tirar outra", "Escolher outra")}</div>`;
   return `<div class="card-foto-placa">
-      <b>📸 Placa entregue! Agora tire a foto dela já colocada</b>
-      <span>Assim fica registrado que a placa está na gôndola.</span>
-      <div class="fotos-botoes">
-        <label class="btn-foto"><input type="file" accept="image/*" capture="environment" data-fotoplaca class="sr-sel"><span class="ico">📷</span>Tirar foto</label>
-        <label class="btn-foto"><input type="file" accept="image/*" data-fotoplaca class="sr-sel"><span class="ico">🖼️</span>Galeria</label>
-      </div></div>`;
+      <b>📸 Placa entregue! Agora anexe a foto dela já colocada</b>
+      <span><b>1.</b> Tire a foto (ou escolha da galeria) · <b>2.</b> Toque em <b>Enviar foto</b></span>
+      ${botoes("Tirar foto", "Galeria")}</div>`;
+}
+let fotoPlacaPre = null;   // foto escolhida, esperando a pessoa tocar em "Enviar foto"
+async function prepararFotoPlaca(file) {
+  if (!file || !aberto) return;
+  const card = document.querySelector(".card-foto-placa"); if (card) card.innerHTML = `<b>Preparando a foto…</b>`;
+  try { fotoPlacaPre = { id: aberto, foto: await comprimir(file, 900, 0.55) }; }   // ~60 a 100 KB
+  catch (e) { toast("Não foi possível abrir a foto. Tente de novo.", "erro"); }
+  renderDetalhe();
+  document.querySelector("[data-act=enviarFotoPlaca]")?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 async function carregarFotoPlaca() {
   const box = $("#fotoPlaca"); if (!box || box.dataset.ok) return;
@@ -1757,16 +1798,17 @@ async function carregarFotoPlaca() {
     box.innerHTML = src ? `<button class="foto grande" data-act="verFotoSrc"><img src="${esc(src)}" alt="Foto da placa colocada"></button>` : `<span class="muted">Foto não encontrada.</span>`;
   } catch (e) { box.innerHTML = `<span class="muted">Não foi possível carregar a foto.</span>`; delete box.dataset.ok; }
 }
-async function enviarFotoPlaca(file) {
-  const p = PEDIDOS.find(x => x.id === aberto); if (!p || !file) return;
+async function enviarFotoPlaca() {
+  const p = PEDIDOS.find(x => x.id === aberto); if (!p || !fotoPlacaPre || fotoPlacaPre.id !== p.id) return;
   const card = document.querySelector(".card-foto-placa"); if (card) card.innerHTML = `<b>Enviando a foto…</b>`;
   try {
-    const foto = await comprimir(file, 900, 0.55);           // ~60 a 100 KB
+    const foto = fotoPlacaPre.foto;
     const onde = await Store.salvarAnexo(p, "placa", foto);
     const patch = { placaColocadaEm: Date.now(), placaColocadaPor: quemSou() || "", fotoPlaca: onde };
     if (onde === "inline") patch.fotoPlacaInline = foto;
     await Store.atualizar(p.id, patch, "Placa colocada: foto registrada");
-    toast("Foto registrada. Obrigado!", "ok");
+    fotoPlacaPre = null; avisarServidor(p.id, "foto");
+    toast("Foto enviada ao escritório, gestor e gerentes. Obrigado!", "ok");
   } catch (e) { console.error(e); toast("Não foi possível enviar a foto: " + (e.code || e.message), "erro"); renderDetalhe(); }
 }
 
@@ -1834,7 +1876,7 @@ async function executar(acao, p) {
         if (isEsc() && !dono && !G) return negar("Só quem assumiu o chamado pode cancelar.");
         o = await dialogo({ titulo: "Cancelar chamado", texto: "Informe o motivo do cancelamento.", placeholder: "Motivo", obrigatorio: true, botao: "Cancelar chamado", perigo: true });
         if (o === null) return;
-        await Store.atualizar(p.id, { status: "cancelado", canceladoEm: Date.now() }, "Chamado cancelado", o); break;
+        await Store.atualizar(p.id, { status: "cancelado", canceladoEm: Date.now(), canceladoPor: P.nome || quemSou() || "" }, "Chamado cancelado", o); if (!G) avisarServidor(p.id, "cancelado"); break;
       case "reabrir":
         if (!dono && !G) return negar("Só quem assumiu (ou o gestor) pode reabrir.");
         o = await dialogo({ titulo: "Reabrir chamado", texto: `Por que o chamado está sendo reaberto? Ele volta para ${p.responsavelNome || "a fila"}.`, placeholder: "Motivo", obrigatorio: true, botao: "Reabrir" });
@@ -1946,6 +1988,28 @@ function avisosResolvidosLoja(lista) {
 function avisosDe(lista) {
   avisosResolvidosLoja(lista);
   if (primeiraCarga) return;
+  const veio = p => conhecidos.has(p.id);
+  // foto da placa colocada: escritório, gestor e gerentes
+  if (isEsc() || ehGerenteAqui()) lista.filter(p => veio(p) && p.placaColocadaEm && !fotoAnt.get(p.id)).forEach(p => {
+    mostrarAviso({ id: p.id, numero: p.numero, urgente: false, resolvido: true, cor: "#3BB072", icone: "📸",
+      titulo: "Placa colocada!", sub: `Loja ${p.loja} · foto enviada`,
+      texto: `<b>${esc(p.placaColocadaPor || "A loja")}</b> enviou a foto da placa na gôndola.`, botao: "Ver foto" });
+  });
+  // gestor: resolvidos e cancelados também chegam
+  if (isGestor()) {
+    lista.filter(p => veio(p) && p.status === "concluido" && statusAnt.get(p.id) !== "concluido").forEach(p => {
+      const t = TIPOS[p.tipo] || { nome: "" };
+      mostrarAviso({ id: p.id, numero: p.numero, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅",
+        titulo: "Chamado resolvido", sub: `Loja ${p.loja}`,
+        texto: `<b>${esc(t.nome)}</b><br>Resolvido por <b>${esc(p.resolvidoPor || p.responsavelNome || "escritório")}</b>${p.entreguePara ? ` · entregue para <b>${esc(p.entreguePara)}</b>` : ""}${noPrazo(p) ? " · ✓ no prazo" : " · <b style=\"color:#D93025\">fora do prazo</b>"}`,
+        botao: "Ver chamado" });
+    });
+    lista.filter(p => veio(p) && p.status === "cancelado" && statusAnt.get(p.id) !== "cancelado" && p.canceladoPor !== Store.perfil?.nome).forEach(p => {
+      const t = TIPOS[p.tipo] || { nome: "" };
+      mostrarAviso({ id: p.id, numero: p.numero, urgente: false, cor: "#8A8F8C", icone: "🚫", titulo: "Chamado cancelado", sub: `Loja ${p.loja}`,
+        texto: `<b>${esc(t.nome)}</b><br>Cancelado por <b>${esc(p.canceladoPor || "escritório")}</b>`, botao: "Ver chamado" });
+    });
+  }
   if (isEsc()) {
     lista.filter(p => statusAnt.get(p.id) === "concluido" && ["aberto", "andamento"].includes(p.status) && p.contestado).forEach(p => {
       const t = TIPOS[p.tipo] || { nome: "" };
@@ -1967,17 +2031,19 @@ function avisosDe(lista) {
 
 
 /* ---------- sessão ---------- */
-let statusAnt = new Map();
+let statusAnt = new Map(), fotoAnt = new Map(), atrasoAvisado = null;
 let chamadoDoLink = new URLSearchParams(location.search).get("chamado");
 function onPedidos(lista) {
   ultimaSync = Date.now(); setTimeout(atualizarAoVivo, 0);
   avisosDe(lista);
   statusAnt = new Map(lista.map(p => [p.id, p.status]));
+  fotoAnt = new Map(lista.map(p => [p.id, p.placaColocadaEm || 0]));
   conhecidos = new Set(lista.map(p => p.id)); primeiraCarga = false;
   TODOS = lista; PEDIDOS = isEsc() ? lista : lista.filter(visivelLoja);
   if (ehLoja() && !Pessoa.ler()) { montarTopo(); return; }
   refrescar();
   if (aberto) renderDetalhe();
+  setTimeout(avisarAtrasos, 1500);
   if (chamadoDoLink && lista.some(p => p.id === chamadoDoLink)) { const id = chamadoDoLink; chamadoDoLink = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} abrirDoAviso(id); }
 }
 
@@ -2001,14 +2067,14 @@ async function registrarPush() {
     if (!tk) return;
     PUSH_TOKEN = tk;
     const eu = ehLoja() ? Pessoa.ler() : null;
-    await Store.salvarToken(tk, { nome: eu?.nome, dispositivoId: eu?.id });
+    await Store.salvarToken(tk, { nome: eu?.nome, cargo: eu?.cargo, gerente: ehGerenteAqui(), dispositivoId: eu?.id });
   } catch (e) { console.warn("push:", e); }
 }
 
 function iniciarSessao() {
   if (!Store.perfil) { renderLogin(); return; }
   aba = isEsc() ? "fila" : "novo"; novoTipo = null; novoFotos = []; enviado = null; resetFiltros();
-  primeiraCarga = true; conhecidos = new Set(); statusAnt = new Map(); avisos = []; $("#aviso").hidden = true;
+  primeiraCarga = true; conhecidos = new Set(); statusAnt = new Map(); fotoAnt = new Map(); atrasoAvisado = null; avisos = []; $("#aviso").hidden = true;
   if (unsub) unsub();
   unsub = Store.observarPedidos(onPedidos);
   manterTelaLigada();
@@ -2096,6 +2162,8 @@ document.addEventListener("click", e => {
     case "limparFiltros": resetFiltros(); render(); break;
     case "testarAviso": liberarSom(); mostrarAviso({ id: "teste", numero: 0, urgente: false, resolvido: true, cor: "#3BB072", icone: "✅", titulo: "Teste de aviso", sub: "É assim que chega quando o escritório resolve", texto: "Se você ouviu o som, está tudo certo! 👍", botao: "OK" }); setTimeout(() => avisoDoSistema({ id: "teste", numero: 0, titulo: "Teste de aviso", texto: "Assim chega o aviso com o celular bloqueado." }), 300); break;
     case "avisoFechar": avisos.pop(); renderAviso(); break;
+    case "agoraMais": agoraMais = !agoraMais; render(); break;
+    case "enviarFotoPlaca": enviarFotoPlaca(); break;
     case "avisoAbrir": abrirDoAviso(el.dataset.id); break;
     case "ativarAvisos": liberarSom(); try { Notification.requestPermission().then(p => { const bx = $("#boxAvisos"); if (bx) bx.outerHTML = caixaAvisosHTML(); else render(); if (p === "granted") { somResolvido(); registrarPush(); toast("Avisos ativados! O celular vai apitar quando o chamado for resolvido.", "ok"); } }); } catch (e) {} break;
     case "fechar": fecharDetalhe(); break;
@@ -2135,7 +2203,7 @@ document.addEventListener("change", e => {
   else if (f === "prioridade") { const u = e.target.value === "urgente"; $("#urgAviso").hidden = !u; $("#obsRot").textContent = u ? "Por que é urgente? (obrigatório)" : "Observação (opcional)"; const o = document.querySelector("#fNovo [name=obs]"); if (o) o.required = u; }
   else if (f === "meus") { filtros.meus = e.target.checked; render(); }
   else if (e.target.dataset?.foto !== undefined && e.target.type === "file") { addFotos([...e.target.files]); e.target.value = ""; }
-  else if (e.target.dataset?.fotoplaca !== undefined && e.target.type === "file") { enviarFotoPlaca(e.target.files[0]); e.target.value = ""; }
+  else if (e.target.dataset?.fotoplaca !== undefined && e.target.type === "file") { prepararFotoPlaca(e.target.files[0]); e.target.value = ""; }
 });
 const limparFalta = el => { const f = el?.closest?.(".falta"); if (f) { f.classList.remove("falta"); $("#toast")?.classList.remove("show"); } };
 document.addEventListener("input", e => {
@@ -2186,6 +2254,24 @@ setInterval(() => {
       texto: `${t.nome} · Loja ${p.loja}<br>Toque para abrir e assumir.` });
   }
 }, 15000);
+// Gestor: avisa quando um chamado passa do prazo sem ser resolvido (uma vez por chamado)
+function avisarAtrasos() {
+  if (!isGestor() || primeiraCarga) return;
+  const atr = PEDIDOS.filter(atrasado);
+  if (atrasoAvisado === null) {   // ao abrir o portal: um resumo só
+    atrasoAvisado = new Set(atr.map(p => p.id));
+    if (atr.length) { const p = atr.sort((a, b) => prazoMs(a) - prazoMs(b))[0];
+      mostrarAviso({ id: p.id, numero: p.numero, urgente: true, cor: "#D93025", icone: "⏰", titulo: `${atr.length} chamado${atr.length > 1 ? "s" : ""} fora do prazo`, sub: "Ainda sem resolver",
+        texto: atr.slice(0, 5).map(x => `${num4(x.numero)} · ${esc(TIPOS[x.tipo]?.curto || "")} · Loja ${esc(x.loja)} · ${x.responsavelNome ? "com " + esc(x.responsavelNome) : "<b>sem responsável</b>"}`).join("<br>"), botao: "Ver o mais atrasado" }); }
+    return;
+  }
+  atr.filter(p => !atrasoAvisado.has(p.id)).forEach(p => {
+    atrasoAvisado.add(p.id);
+    mostrarAviso({ id: p.id, numero: p.numero, urgente: true, cor: "#D93025", icone: "⏰", titulo: "Chamado passou do prazo!", sub: `Loja ${p.loja}`,
+      texto: `<b>${esc(TIPOS[p.tipo]?.nome || "")}</b><br>${p.responsavelNome ? "Está com <b>" + esc(p.responsavelNome) + "</b>" : "<b>Ninguém assumiu ainda</b>"} · aberto ${desde(p.criadoEm)}`, botao: "Ver chamado" });
+  });
+}
+setInterval(avisarAtrasos, 30000);
 // Atualiza "há X min" e atrasos a cada minuto
 setInterval(() => { if (Store.perfil && !aberto && $("#dlg").hidden) refrescar(); }, 30000);
 
